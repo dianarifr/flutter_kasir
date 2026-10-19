@@ -13,6 +13,14 @@ class AppColors {
   static const success = Color(0xFF4F7A5A);
   static const error = Color(0xFFB3402F);
 
+  // Badge status pesanan
+  static const badgeWarningBg = Color(0xFFFFF3CD);
+  static const badgeWarningText = Color(0xFF856404);
+  static const badgeSuccessBg = Color(0xFFD4EDDA);
+  static const badgeSuccessText = Color(0xFF155724);
+  static const badgeErrorBg = Color(0xFFF8D7DA);
+  static const badgeErrorText = Color(0xFF721C24);
+
   // Dark Mode Colors
   static const darkBg = Color(0xFF1F1E1D);
   static const darkSurface = Color(0xFF2A2927);

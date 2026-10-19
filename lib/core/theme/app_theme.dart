@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+
 import 'app_colors.dart';
 
 ThemeData buildLightTheme() {
@@ -15,11 +16,22 @@ ThemeData buildLightTheme() {
     ).copyWith(primary: AppColors.accent, error: AppColors.error),
 
     textTheme: base.copyWith(
-      headlineLarge: GoogleFonts.lora(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.ink),
-      headlineMedium: GoogleFonts.lora(fontSize: 20, fontWeight: FontWeight.w600, color: AppColors.ink),
+      headlineLarge: GoogleFonts.lora(
+        fontSize: 28,
+        fontWeight: FontWeight.bold,
+        color: AppColors.ink,
+      ),
+      headlineMedium: GoogleFonts.lora(
+        fontSize: 20,
+        fontWeight: FontWeight.w600,
+        color: AppColors.ink,
+      ),
       bodyLarge: base.bodyLarge?.copyWith(color: AppColors.ink, fontSize: 16),
       bodyMedium: base.bodyMedium?.copyWith(color: AppColors.ink, fontSize: 14),
-      bodySmall: base.bodySmall?.copyWith(color: AppColors.inkMuted, fontSize: 12),
+      bodySmall: base.bodySmall?.copyWith(
+        color: AppColors.inkMuted,
+        fontSize: 12,
+      ),
     ),
 
     appBarTheme: const AppBarTheme(
@@ -103,11 +115,28 @@ ThemeData buildDarkTheme() {
     ).copyWith(primary: AppColors.accent, error: AppColors.error),
 
     textTheme: base.copyWith(
-      headlineLarge: GoogleFonts.lora(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.darkInk),
-      headlineMedium: GoogleFonts.lora(fontSize: 20, fontWeight: FontWeight.w600, color: AppColors.darkInk),
-      bodyLarge: base.bodyLarge?.copyWith(color: AppColors.darkInk, fontSize: 16),
-      bodyMedium: base.bodyMedium?.copyWith(color: AppColors.darkInk, fontSize: 14),
-      bodySmall: base.bodySmall?.copyWith(color: AppColors.darkInkMuted, fontSize: 12),
+      headlineLarge: GoogleFonts.lora(
+        fontSize: 28,
+        fontWeight: FontWeight.bold,
+        color: AppColors.darkInk,
+      ),
+      headlineMedium: GoogleFonts.lora(
+        fontSize: 20,
+        fontWeight: FontWeight.w600,
+        color: AppColors.darkInk,
+      ),
+      bodyLarge: base.bodyLarge?.copyWith(
+        color: AppColors.darkInk,
+        fontSize: 16,
+      ),
+      bodyMedium: base.bodyMedium?.copyWith(
+        color: AppColors.darkInk,
+        fontSize: 14,
+      ),
+      bodySmall: base.bodySmall?.copyWith(
+        color: AppColors.darkInkMuted,
+        fontSize: 12,
+      ),
     ),
 
     appBarTheme: const AppBarTheme(
