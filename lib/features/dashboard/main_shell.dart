@@ -8,6 +8,8 @@ import '../auth/login_page.dart';
 import '../orders/order_list_page.dart';
 import '../stock/stok_bahan_page.dart';
 import '../stock/stok_produk_page.dart';
+import '../history/sales_history_page.dart';
+import '../shift/shift_sheets.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -19,12 +21,34 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
 
+  @override
+  void initState() {
+    super.initState();
+    // Shift wajib: begitu masuk app (login / auto-login), muat shift
+    // aktif lalu tampilkan modal "Buka Shift" bila belum ada.
+    _ensureShiftOpen();
+  }
+
+  Future<void> _ensureShiftOpen() async {
+    final data = AppData.instance;
+    await data.loadCurrentShift();
+
+    if (!mounted) return;
+    // Hanya user ber-outlet yang diingatkan buka shift (admin tanpa
+    // outlet dilewati). Modal bisa ditutup — kewajiban shift tetap
+    // ditekan di gerbang menu Kasir di bawah.
+    if (data.currentOutlet != null && data.currentShift == null) {
+      await showOpenShiftSheet(context);
+    }
+  }
+
   final List<String> _titles = [
     'Dashboard',
     'Kasir (POS)',
     'Stok Produk',
     'Stok Bahan',
     'Daftar Pesanan',
+    'Riwayat Penjualan',
   ];
 
   final List<Widget> _pages = [
@@ -33,6 +57,7 @@ class _MainShellState extends State<MainShell> {
     const StokProdukPage(),
     const StokBahanPage(),
     const OrderListPage(),
+    const SalesHistoryPage(),
   ];
 
   /// Logout: panggil API, bersihkan state, lalu kembali ke halaman login.
@@ -84,7 +109,7 @@ class _MainShellState extends State<MainShell> {
                     ),
                     const SizedBox(width: 12),
                     Text(
-                      'Kasir POS',
+                      'Nyemil Nyam',
                       style: theme.textTheme.headlineMedium?.copyWith(
                         fontSize: 20,
                       ),
@@ -111,10 +136,16 @@ class _MainShellState extends State<MainShell> {
                     'Kasir (POS)',
                   ),
                   _buildMenuItem(
-                    2,
-                    Icons.inventory_2_outlined,
-                    Icons.inventory_2,
-                    'Stok Produk',
+                    4,
+                    Icons.receipt_long_outlined,
+                    Icons.receipt_long,
+                    'Daftar Pesanan',
+                  ),
+                  _buildMenuItem(
+                    5,
+                    Icons.query_stats_outlined,
+                    Icons.query_stats,
+                    'Riwayat Penjualan',
                   ),
                   _buildMenuItem(
                     3,
@@ -123,10 +154,10 @@ class _MainShellState extends State<MainShell> {
                     'Stok Bahan',
                   ),
                   _buildMenuItem(
-                    4,
-                    Icons.receipt_long_outlined,
-                    Icons.receipt_long,
-                    'Daftar Pesanan',
+                    2,
+                    Icons.inventory_2_outlined,
+                    Icons.inventory_2,
+                    'Stok Produk',
                   ),
                 ],
               ),
@@ -215,10 +246,24 @@ class _MainShellState extends State<MainShell> {
           ),
         ),
         onTap: () {
+          final data = AppData.instance;
+          // Kasir dengan outlet wajib punya shift aktif sebelum masuk
+          // POS. Belum ada shift -> bawa ke Dashboard lalu tampilkan
+          // modal "Buka Shift". User tanpa outlet (admin) tidak
+          // dibatasi, sama seperti gate saat login.
+          final butuhShift =
+              index == 1 &&
+              data.currentOutlet != null &&
+              data.currentShift == null;
+
           setState(() {
-            _selectedIndex = index;
+            _selectedIndex = butuhShift ? 0 : index;
           });
           Navigator.pop(context);
+
+          if (butuhShift) {
+            showOpenShiftSheet(context);
+          }
         },
       ),
     );

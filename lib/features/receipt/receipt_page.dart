@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../core/data/app_data.dart';
 import '../../core/data/models.dart';
 import '../../core/utils/formatters.dart';
 
@@ -13,6 +14,8 @@ class ReceiptPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Nama outlet dari sesi yang sedang login.
+    final outletName = AppData.instance.currentOutlet?.name ?? 'Nyemil Nyam';
 
     return Scaffold(
       appBar: AppBar(title: const Text('Struk')),
@@ -39,13 +42,13 @@ class ReceiptPage extends StatelessWidget {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Kasir POS',
+                            'Nyemil Nyam',
                             style: theme.textTheme.headlineMedium,
                           ),
                           const SizedBox(height: 4),
-                          const Text(
-                            'Outlet Pandugo',
-                            style: TextStyle(
+                          Text(
+                            outletName,
+                            style: const TextStyle(
                               fontSize: 12,
                               color: AppColors.inkMuted,
                             ),
@@ -56,7 +59,7 @@ class ReceiptPage extends StatelessWidget {
                     const Divider(height: 24),
 
                     // Info struk
-                    _infoRow('No. Struk', order.id),
+                    _infoRow('No. Struk', order.displayId),
                     const SizedBox(height: 4),
                     _infoRow('Tanggal', formatDate(order.createdAt)),
                     const SizedBox(height: 4),
@@ -110,25 +113,44 @@ class ReceiptPage extends StatelessWidget {
                     ),
                     const Divider(height: 24),
 
-                    // Ringkasan biaya
+                    // Ringkasan biaya — charge dinamis dari backend
+                    // (pajak/diskon/biaya lain), fallback rekap agregat.
                     _infoRow('Subtotal', formatRupiah(order.subtotal)),
-                    if (order.discount > 0)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: _infoRow(
-                          'Diskon (10%)',
-                          '-${formatRupiah(order.discount)}',
-                          valueColor: AppColors.error,
+                    if (order.charges.isNotEmpty)
+                      ...order.charges.map(
+                        (charge) => Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: _infoRow(
+                            charge.isPercentage
+                                ? '${charge.name} (${MasterCharge.trimValue(charge.value)}%)'
+                                : charge.name,
+                            charge.amount < 0
+                                ? '-${formatRupiah(charge.amount.abs().round())}'
+                                : formatRupiah(charge.amount.round()),
+                            valueColor:
+                                charge.amount < 0 ? AppColors.error : null,
+                          ),
                         ),
-                      ),
-                    if (order.extraFee > 0)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: _infoRow(
-                          'Biaya Tambahan',
-                          formatRupiah(order.extraFee),
+                      )
+                    else ...[
+                      if (order.discount > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: _infoRow(
+                            'Diskon',
+                            '-${formatRupiah(order.discount)}',
+                            valueColor: AppColors.error,
+                          ),
                         ),
-                      ),
+                      if (order.extraFee > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: _infoRow(
+                            'Biaya Tambahan',
+                            formatRupiah(order.extraFee),
+                          ),
+                        ),
+                    ],
                     const SizedBox(height: 8),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -149,7 +171,11 @@ class ReceiptPage extends StatelessWidget {
                     const Divider(height: 24),
 
                     // Status & info pembayaran
-                    Center(child: _statusBadge(order.isPaid)),
+                    Center(
+                      child: order.status == OrderStatus.dibatalkan
+                          ? _cancelBadge()
+                          : _statusBadge(order.isPaid),
+                    ),
                     const SizedBox(height: 12),
                     if (order.isPaid) ...[
                       _infoRow('Metode', order.paymentMethod?.label ?? '-'),
@@ -263,6 +289,25 @@ class ReceiptPage extends StatelessWidget {
           fontWeight: FontWeight.bold,
           letterSpacing: 0.5,
           color: paid ? AppColors.badgeSuccessText : AppColors.badgeWarningText,
+        ),
+      ),
+    );
+  }
+
+  Widget _cancelBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.badgeErrorBg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: const Text(
+        'DIBATALKAN',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 0.5,
+          color: AppColors.badgeErrorText,
         ),
       ),
     );

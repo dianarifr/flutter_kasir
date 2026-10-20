@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/network/api_exception.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/data/app_data.dart';
@@ -28,6 +29,11 @@ class _OrderListPageState extends State<OrderListPage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    // Muat order dari API setiap halaman dibuka (initState jalan ulang
+    // setiap tab dipilih).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _data.loadOrders();
+    });
   }
 
   @override
@@ -42,7 +48,7 @@ class _OrderListPageState extends State<OrderListPage>
       final matchStatus = status == null || order.status == status;
       final matchQuery =
           query.isEmpty ||
-          order.id.toLowerCase().contains(query) ||
+          order.displayId.toLowerCase().contains(query) ||
           order.customer.toLowerCase().contains(query);
       return matchStatus && matchQuery;
     }).toList();
@@ -75,6 +81,32 @@ class _OrderListPageState extends State<OrderListPage>
     setState(() {
       if (!_checkedItems.add(key)) _checkedItems.remove(key);
     });
+  }
+
+  /// Batalkan pesanan lewat backend (stok bahan dikembalikan server).
+  /// Backend menolak batal untuk order yang sudah dibayar.
+  Future<void> _cancelOrder(Order order) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await _data.cancelOrder(order);
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Pesanan dibatalkan, stok bahan dikembalikan.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } on ApiException catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: AppColors.error),
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Tidak dapat terhubung ke server.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
   }
 
   void _showMoreMenu(BuildContext context, Order order) {
@@ -111,23 +143,10 @@ class _OrderListPageState extends State<OrderListPage>
                     );
                   },
                 ),
+                // "Tandai Selesai" dihapus: status selesai kini hanya
+                // bisa dicapai lewat pembayaran supaya selalu ada
+                // catatan pembayaran (nominal & metode).
                 if (order.status == OrderStatus.diproses) ...[
-                  const Divider(),
-                  ListTile(
-                    title: const Center(
-                      child: Text(
-                        'Tandai Selesai',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ),
-                    onTap: () {
-                      Navigator.pop(sheetContext);
-                      _data.completeOrder(order);
-                    },
-                  ),
                   const Divider(),
                   ListTile(
                     title: const Center(
@@ -142,7 +161,7 @@ class _OrderListPageState extends State<OrderListPage>
                     ),
                     onTap: () {
                       Navigator.pop(sheetContext);
-                      _data.cancelOrder(order);
+                      _cancelOrder(order);
                     },
                   ),
                 ],
@@ -213,19 +232,59 @@ class _OrderListPageState extends State<OrderListPage>
   }
 
   Widget _buildOrderListView(List<Order> orders) {
-    if (orders.isEmpty) {
-      return const Center(
-        child: Text(
-          'Belum ada pesanan',
-          style: TextStyle(color: AppColors.inkMuted),
+    // Status global: loading / error / kosong / isi.
+    if (_data.isLoadingOrders && _data.orders.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_data.ordersError != null && _data.orders.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _data.ordersError!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.inkMuted),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: _data.loadOrders,
+              child: const Text('Coba Lagi'),
+            ),
+          ],
         ),
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      itemCount: orders.length,
-      itemBuilder: (context, index) => _buildOrderCard(context, orders[index]),
+    if (orders.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: () => _data.loadOrders(),
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: SizedBox(
+              height: constraints.maxHeight,
+              child: const Center(
+                child: Text(
+                  'Belum ada pesanan',
+                  style: TextStyle(color: AppColors.inkMuted),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => _data.loadOrders(),
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        itemCount: orders.length,
+        itemBuilder: (context, index) => _buildOrderCard(context, orders[index]),
+      ),
     );
   }
 
@@ -312,7 +371,7 @@ class _OrderListPageState extends State<OrderListPage>
             Row(
               children: [
                 Text(
-                  'No. Pesanan: ${order.id}',
+                  'No. Pesanan: ${order.displayId}',
                   style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,

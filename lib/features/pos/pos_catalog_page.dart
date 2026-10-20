@@ -25,10 +25,104 @@ class _PosCatalogPageState extends State<PosCatalogPage> {
     super.initState();
     // Muat ulang produk dari API setiap halaman kasir dibuka — data selalu
     // segar (gambar baru yang diupload admin langsung muncul tanpa
-    // perlu restart app).
+    // perlu restart app). Stok produk ikut dimuat DENGAN detail komponen
+    // supaya kasir bisa diperingatkan saat menambah produk yang bahannya
+    // kurang/habis.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_data.isLoadingProducts) _data.loadProducts();
+      if (!_data.isLoadingStock) _data.loadProductStock(withDetail: true);
     });
+  }
+
+  /// Tambah ke keranjang + peringatan non-blocking bila bahan penyusun
+  /// produk kurang/habis. Pesanan tetap bisa dilanjutkan — kasir hanya
+  /// diberi tahu.
+  void _addProduct(String productId) {
+    final newQty = _data.cartQty(productId) + 1;
+    _data.addToCart(productId);
+
+    final issues = _data.stockIssuesFor(productId, newQty);
+    if (issues.isEmpty) return;
+
+    final matches = _data.products.where((p) => p.id == productId);
+    final productName = matches.isEmpty ? '-' : matches.first.name;
+    _showStockWarningDialog(productName, issues);
+  }
+
+  void _showStockWarningDialog(String productName, List<String> issues) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: Row(
+          children: [
+            const Icon(
+              Icons.warning_amber_rounded,
+              color: AppColors.error,
+              size: 22,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Stok Bahan Kurang',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.ink,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              productName,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ...issues.map(
+              (issue) => Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.circle,
+                      size: 5,
+                      color: AppColors.inkMuted,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        issue,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Pesanan tetap bisa dilanjutkan.',
+              style: TextStyle(fontSize: 12, color: AppColors.inkMuted),
+            ),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Lanjutkan'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -320,7 +414,7 @@ class _PosCatalogPageState extends State<PosCatalogPage> {
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     side: const BorderSide(color: AppColors.accent),
                   ),
-                  onPressed: () => _data.addToCart(product.id),
+                  onPressed: () => _addProduct(product.id),
                   child: const Text(
                     'Tambah',
                     style: TextStyle(color: AppColors.accent, fontSize: 13),
@@ -390,7 +484,7 @@ class _PosCatalogPageState extends State<PosCatalogPage> {
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            onPressed: () => _data.addToCart(productId),
+            onPressed: () => _addProduct(productId),
             child: const Icon(Icons.add, size: 16, color: AppColors.accent),
           ),
         ),

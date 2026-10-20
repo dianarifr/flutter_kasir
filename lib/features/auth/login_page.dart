@@ -125,7 +125,7 @@ class _LoginPageState extends State<LoginPage> {
 
                       // Title
                       Text(
-                        'Kasir POS',
+                        'Nyemil Nyam',
                         style: theme.textTheme.headlineMedium,
                         textAlign: TextAlign.center,
                       ),

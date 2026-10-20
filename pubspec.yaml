@@ -43,7 +43,8 @@ dependencies:
   shared_preferences: ^2.3.0
   # Membaca file .env untuk konfigurasi (API_BASE_URL dkk).
   flutter_dotenv: ^5.2.1
-
+  # Date range picker untuk filter "Custom" di Riwayat Penjualan.
+  flutter_date_range_picker: ^0.3.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

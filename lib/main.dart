@@ -50,7 +50,7 @@ class _PosAppState extends State<PosApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Kasir App',
+      title: 'Nyemil Nyam',
       debugShowCheckedModeBanner: false,
       theme: buildLightTheme(),
       darkTheme: buildDarkTheme(),

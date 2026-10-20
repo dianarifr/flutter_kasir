@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/network/api_exception.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/data/app_data.dart';
@@ -17,7 +18,6 @@ class PosPaymentPage extends StatefulWidget {
 }
 
 class _PosPaymentPageState extends State<PosPaymentPage> {
-  final _customerController = TextEditingController();
   final _cashController = TextEditingController();
   final _splitCashController = TextEditingController();
   final _splitNonCashController = TextEditingController();
@@ -27,6 +27,7 @@ class _PosPaymentPageState extends State<PosPaymentPage> {
   int _cashGiven = 0;
   int _splitCash = 0;
   int _splitNonCash = 0;
+  bool _isSubmitting = false;
 
   AppData get _data => AppData.instance;
   int get _total => widget.order.total;
@@ -43,108 +44,10 @@ class _PosPaymentPageState extends State<PosPaymentPage> {
 
   @override
   void dispose() {
-    _customerController.dispose();
     _cashController.dispose();
     _splitCashController.dispose();
     _splitNonCashController.dispose();
     super.dispose();
-  }
-
-  void _showCustomerPicker() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.surface,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetContext) {
-        String query = '';
-
-        return StatefulBuilder(
-          builder: (sheetContext, setSheetState) {
-            final filtered = _data.customers
-                .where(
-                  (c) => c.toLowerCase().contains(query.trim().toLowerCase()),
-                )
-                .toList();
-
-            return SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Text(
-                      'Pilih Pelanggan',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: TextField(
-                      autofocus: true,
-                      decoration: const InputDecoration(
-                        hintText: 'Cari pelanggan...',
-                        prefixIcon: Icon(Icons.search, size: 20),
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                      ),
-                      onChanged: (val) => setSheetState(() => query = val),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Divider(),
-                  if (filtered.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text(
-                        'Pelanggan tidak ditemukan',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.inkMuted,
-                        ),
-                      ),
-                    )
-                  else
-                    Flexible(
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: filtered.length,
-                        itemBuilder: (context, index) {
-                          final customer = filtered[index];
-                          return ListTile(
-                            leading: const CircleAvatar(
-                              radius: 16,
-                              backgroundColor: AppColors.surfaceAlt,
-                              child: Icon(
-                                Icons.person_outline,
-                                size: 18,
-                                color: AppColors.ink,
-                              ),
-                            ),
-                            title: Text(customer),
-                            onTap: () {
-                              _customerController.text = customer;
-                              Navigator.pop(sheetContext);
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  const SizedBox(height: 8),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
   }
 
   void _showError(String message) {
@@ -153,7 +56,7 @@ class _PosPaymentPageState extends State<PosPaymentPage> {
     );
   }
 
-  void _confirm() {
+  Future<void> _confirm() async {
     if (_selectedPaymentMethod == 0 && _cashGiven < _total) {
       _showError('Jumlah uang tunai kurang dari total pembayaran');
       return;
@@ -162,32 +65,46 @@ class _PosPaymentPageState extends State<PosPaymentPage> {
       _showError('Nominal pembayaran campuran belum mencapai total');
       return;
     }
+    if (_isSubmitting) return;
 
+    setState(() => _isSubmitting = true);
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
 
-    _data.payOrder(
-      widget.order,
-      method: PaymentMethod.values[_selectedPaymentMethod],
-      cashGiven: _selectedPaymentMethod == 0 ? _cashGiven : 0,
-      changeGiven: _selectedPaymentMethod == 0
-          ? (_change < 0 ? 0 : _change)
-          : 0,
-      splitCash: _selectedPaymentMethod == 2 ? _splitCash : 0,
-      splitNonCash: _selectedPaymentMethod == 2 ? _splitNonCash : 0,
-      customer: _customerController.text.trim(),
-    );
+    try {
+      // Kirim ke backend; kembalian dihitung server, order terbaru dipakai struk.
+      final paid = await _data.payOrder(
+        widget.order,
+        method: PaymentMethod.values[_selectedPaymentMethod],
+        cashGiven: _selectedPaymentMethod == 0 ? _cashGiven : 0,
+        splitCash: _selectedPaymentMethod == 2 ? _splitCash : 0,
+        splitNonCash: _selectedPaymentMethod == 2 ? _splitNonCash : 0,
+      );
 
-    navigator.popUntil((route) => route.isFirst);
-    navigator.push(
-      MaterialPageRoute(builder: (_) => ReceiptPage(order: widget.order)),
-    );
-    messenger.showSnackBar(
-      const SnackBar(
-        content: Text('Pembayaran Berhasil Disimpan!'),
-        backgroundColor: AppColors.success,
-      ),
-    );
+      navigator.popUntil((route) => route.isFirst);
+      navigator.push(
+        MaterialPageRoute(builder: (_) => ReceiptPage(order: paid)),
+      );
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Pembayaran Berhasil Disimpan!'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } on ApiException catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: AppColors.error),
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Tidak dapat terhubung ke server.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
   }
 
   @override
@@ -210,45 +127,6 @@ class _PosPaymentPageState extends State<PosPaymentPage> {
                       color: AppColors.success,
                       fontSize: 24,
                     ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Nama Pelanggan
-                  const Text(
-                    'Nama Pelanggan',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _customerController,
-                          decoration: const InputDecoration(
-                            hintText: 'Nama Pembeli',
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      OutlinedButton(
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                          side: const BorderSide(color: AppColors.border),
-                        ),
-                        onPressed: _showCustomerPicker,
-                        child: const Text(
-                          'Pilih',
-                          style: TextStyle(color: AppColors.ink),
-                        ),
-                      ),
-                    ],
                   ),
                   const SizedBox(height: 24),
 
@@ -440,8 +318,17 @@ class _PosPaymentPageState extends State<PosPaymentPage> {
             child: SizedBox(
               width: double.infinity,
               child: FilledButton(
-                onPressed: _confirm,
-                child: const Text('Konfirmasi Pembayaran'),
+                onPressed: _isSubmitting ? null : _confirm,
+                child: _isSubmitting
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('Konfirmasi Pembayaran'),
               ),
             ),
           ),
