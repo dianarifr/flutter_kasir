@@ -430,7 +430,10 @@ class Order {
     code: json['code'] as String? ?? '',
     customer: json['customer_name'] as String? ?? '',
     createdAt:
-        DateTime.tryParse(json['created_at'] as String? ?? '') ??
+        // toISOString() backend mengirim UTC (akhiran Z); konversi ke
+        // waktu lokal perangkat supaya jam yang tampil WIB.
+        DateTime.tryParse(json['created_at'] as String? ?? '')
+            ?.toLocal() ??
         DateTime.now(),
     queueNumber: _asInt(json['queue_number']),
     items: (json['items'] as List<dynamic>? ?? const [])
@@ -603,7 +606,9 @@ class SalesOrder {
     total: _asInt(json['total_price']),
     cashierName: json['cashier_name'] as String? ?? '',
     createdAt:
-        DateTime.tryParse(json['created_at'] as String? ?? '') ??
+        // Konversi UTC -> lokal, sama seperti di Order.fromJson.
+        DateTime.tryParse(json['created_at'] as String? ?? '')
+            ?.toLocal() ??
         DateTime.now(),
   );
 
@@ -758,11 +763,14 @@ class Shift {
     userId: _asInt(json['user_id']),
     outletId: _asInt(json['outlet_id']),
     startTime:
-        DateTime.tryParse(json['start_time'] as String? ?? '') ??
+        // ISO8601 dari backend memakai UTC (toISOString()); konversi ke
+        // waktu lokal perangkat supaya jam shift tampil WIB, bukan UTC.
+        DateTime.tryParse(json['start_time'] as String? ?? '')
+            ?.toLocal() ??
         DateTime.now(),
     endTime: json['end_time'] == null
         ? null
-        : DateTime.tryParse(json['end_time'] as String),
+        : DateTime.tryParse(json['end_time'] as String)?.toLocal(),
     startingCash: _asInt(json['starting_cash']),
     endingCash: json['ending_cash'] == null
         ? null
