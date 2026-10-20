@@ -31,8 +31,10 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
   @override
   void initState() {
     super.initState();
-    // Charge & daftar pelanggan dimuat dari backend; halaman checkout
-    // selalu dibuat ulang saat dibuka, jadi datanya selalu segar.
+    // Charge dimuat cache-first: tampil instan dari data sesi/cache
+    // persisten, disegarkan senyap di belakang layar bila usia data
+    // lewat TTL (lihat AppData.loadCharges). Pelanggan tetap dimuat
+    // langsung dari backend setiap checkout dibuka.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _data.loadCharges();
       _data.loadCustomers();

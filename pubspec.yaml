@@ -57,6 +57,10 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
 
+  # Generator ikon launcher Android dari logo (dev-only): ikon legacy
+  # + adaptive icon dihasilkan lewat `dart run flutter_launcher_icons`.
+  flutter_launcher_icons: ^0.14.4
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
@@ -99,3 +103,18 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# Ikon launcher: logo full-bleed untuk Android lama; untuk adaptive icon
+# (Android 8+) logo diskalakan ~60% di atas kanvas transparan — di bawahnya
+# lapisan warna merah #ED3E23 yang sama dengan latar logo, sehingga logo
+# aman dari mask launcher tanpa terlihat "mengecil".
+flutter_launcher_icons:
+  image_path: "assets/icon/app_icon.png"
+  android: true
+  ios: false
+  min_sdk_android: 24
+  adaptive_icon_background: "#ED3E23"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  # Foreground sudah di-pad 60% saat generate — inset tambahan 16% bawaan
+  # membuat logo mengecil dua kali; dimatikan supaya logo pas zona aman.
+  adaptive_icon_foreground_inset: 0

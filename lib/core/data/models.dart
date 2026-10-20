@@ -67,6 +67,15 @@ class Product {
     price: (json['price'] as num?)?.toInt() ?? 0,
     imageUrl: json['image_url'] as String?,
   );
+
+  /// Bentuk minimal untuk cache persisten (LocalCache) — simetris dengan
+  /// [fromJson] sehingga round-trip tidak mengubah data.
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'price': price,
+    if (imageUrl != null) 'image_url': imageUrl,
+  };
 }
 
 /// Outlet tempat user (kasir) bertugas.
@@ -348,6 +357,16 @@ class MasterCharge {
     isPercentage: json['is_percentage'] as bool? ?? false,
     type: json['type'] as String? ?? 'biaya',
   );
+
+  /// Bentuk minimal untuk cache persisten (LocalCache) — simetris dengan
+  /// [fromJson] sehingga round-trip tidak mengubah data.
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'value': value,
+    'is_percentage': isPercentage,
+    'type': type,
+  };
 }
 
 /// Konversi angka dari JSON yang aman (bisa int, double, atau null).

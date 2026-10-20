@@ -23,11 +23,11 @@ class _PosCatalogPageState extends State<PosCatalogPage> {
   @override
   void initState() {
     super.initState();
-    // Muat ulang produk dari API setiap halaman kasir dibuka — data selalu
-    // segar (gambar baru yang diupload admin langsung muncul tanpa
-    // perlu restart app). Stok produk ikut dimuat DENGAN detail komponen
-    // supaya kasir bisa diperingatkan saat menambah produk yang bahannya
-    // kurang/habis.
+    // Produk dimuat cache-first: tampil instan dari data sesi/cache
+    // persisten, disegarkan senyap di belakang layar bila usia data
+    // lewat TTL (lihat AppData.loadProducts). Stok produk ikut dimuat
+    // DENGAN detail komponen supaya kasir bisa diperingatkan saat
+    // menambah produk yang bahannya kurang/habis.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_data.isLoadingProducts) _data.loadProducts();
       if (!_data.isLoadingStock) _data.loadProductStock(withDetail: true);
@@ -171,7 +171,7 @@ class _PosCatalogPageState extends State<PosCatalogPage> {
           );
         } else {
           body = RefreshIndicator(
-            onRefresh: () => _data.loadProducts(),
+            onRefresh: () => _data.loadProducts(force: true),
             child: GridView.builder(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -250,7 +250,7 @@ class _PosCatalogPageState extends State<PosCatalogPage> {
   /// Bungkus konten dengan pull-to-refresh (muat ulang produk dari API).
   Widget _buildRefreshable(Widget child) {
     return RefreshIndicator(
-      onRefresh: () => _data.loadProducts(),
+      onRefresh: () => _data.loadProducts(force: true),
       child: LayoutBuilder(
         builder: (context, constraints) => SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -282,7 +282,7 @@ class _PosCatalogPageState extends State<PosCatalogPage> {
           ),
           const SizedBox(height: 12),
           FilledButton(
-            onPressed: () => _data.loadProducts(),
+            onPressed: () => _data.loadProducts(force: true),
             child: const Text('Coba Lagi'),
           ),
         ],

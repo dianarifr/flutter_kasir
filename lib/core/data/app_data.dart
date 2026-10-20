@@ -12,6 +12,7 @@ import '../services/product_service.dart';
 import '../services/sales_history_service.dart';
 import '../services/shift_service.dart';
 import '../services/stock_service.dart';
+import 'local_cache.dart';
 
 /// State global in-memory yang dipakai lintas halaman.
 /// Halaman yang butuh reaktif memakai [ListenableBuilder] dengan [instance].
@@ -67,7 +68,10 @@ class AppData extends ChangeNotifier {
     _componentError = null;
     _products = [];
     _productsError = null;
+    _productsFetchedAt = null;
     _charges = [];
+    _chargesError = null;
+    _chargesFetchedAt = null;
     _orders = [];
     _customers = [];
     _salesHistory = null;
@@ -165,6 +169,13 @@ class AppData extends ChangeNotifier {
   /// Dipakai saat sesi hangus di tengah pemakaian (401): token sudah
   /// tidak valid sehingga request logout hanya akan 401 lagi.
   Future<void> clearSessionLocal() async {
+    // Cache persisten milik outlet yang keluar ikut dibuang supaya akun
+    // lain di perangkat yang sama tidak mewarisi datanya.
+    final outletId = _currentUser?.outlet?.id;
+    if (outletId != null) {
+      unawaited(LocalCache.instance.remove('charges_outlet_$outletId'));
+      unawaited(LocalCache.instance.remove('products_outlet_$outletId'));
+    }
     await AuthService.instance.clearLocalSession();
     _currentUser = null;
     _productStocks = [];
@@ -173,7 +184,10 @@ class AppData extends ChangeNotifier {
     _componentError = null;
     _products = [];
     _productsError = null;
+    _productsFetchedAt = null;
     _charges = [];
+    _chargesError = null;
+    _chargesFetchedAt = null;
     _orders = [];
     _customers = [];
     _salesHistory = null;
@@ -189,6 +203,15 @@ class AppData extends ChangeNotifier {
   bool _isLoadingProducts = false;
   String? _productsError;
 
+  /// Waktu daftar produk terakhir sukses diambil dari API — dasar
+  /// keputusan segar/basi cache.
+  DateTime? _productsFetchedAt;
+
+  /// Batas usia daftar produk sebelum dianggap perlu segarkan di
+  /// belakang layar. Menu lebih rawan berubah daripada charge
+  /// (harga/tampil di menu), jadi batasnya lebih pendek.
+  static const _productsTtl = Duration(minutes: 5);
+
   /// Daftar produk untuk menu kasir (dari API, TANPA info stok —
   /// semua produk tampil apa adanya).
   List<Product> get products => List.unmodifiable(_products);
@@ -198,8 +221,61 @@ class AppData extends ChangeNotifier {
   /// Pesan error terakhir saat memuat produk (`null` = tidak ada error).
   String? get productsError => _productsError;
 
-  /// Muat daftar produk dari API untuk outlet user yang sedang login.
-  Future<void> loadProducts() async {
+  /// Muat daftar produk dengan pola cache-first:
+  /// - Sesi berjalan: menu tampil langsung; bila usia data lewat TTL,
+  ///   segarkan senyap di belakang layar (tanpa spinner, tanpa error).
+  /// - App baru dibuka: cache persisten outlet tampil instan supaya
+  ///   menu kasir tidak menunggu jaringan.
+  /// - [force] (pull-to-refresh / tombol coba lagi) selalu fetch ke API.
+  Future<void> loadProducts({bool force = false}) async {
+    if (!force && _products.isNotEmpty) {
+      if (_productsFresh) return;
+      unawaited(_refreshProductsSilently());
+      return;
+    }
+
+    if (!force) {
+      final outlet = currentOutlet;
+      if (outlet != null) {
+        final entry = await LocalCache.instance.readJson(
+          'products_outlet_${outlet.id}',
+        );
+        final cached = _decodeProducts(entry?.payload);
+        if (cached != null && cached.isNotEmpty) {
+          _products = cached;
+          _productsFetchedAt = entry!.savedAt;
+          notifyListeners();
+          if (_productsFresh) return;
+          unawaited(_refreshProductsSilently());
+          return;
+        }
+      }
+    }
+
+    await _fetchProducts();
+  }
+
+  bool get _productsFresh =>
+      _productsFetchedAt != null &&
+      DateTime.now().difference(_productsFetchedAt!) < _productsTtl;
+
+  /// Ubah payload cache jadi daftar [Product]; `null` bila formatnya
+  /// tidak dikenali (cache rusak/versi lama) — dianggap tidak ada cache
+  /// sehingga alur fetch normal tetap berjalan.
+  List<Product>? _decodeProducts(Object? payload) {
+    if (payload is! List) return null;
+    try {
+      return payload
+          .map((e) => Product.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Fetch produk ke API dengan spinner/error seperti semula, lalu
+  /// simpan hasilnya ke cache persisten outlet.
+  Future<void> _fetchProducts() async {
     final outlet = currentOutlet;
     if (outlet == null) {
       _productsError = 'Outlet tidak ditemukan untuk user ini.';
@@ -212,7 +288,13 @@ class AppData extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _products = await ProductService.instance.fetchProducts(outlet.id);
+      final fresh = await ProductService.instance.fetchProducts(outlet.id);
+      // Logout bisa terjadi di tengah fetch: jangan isi state/cache
+      // milik outlet yang barusan ditinggalkan.
+      if (_currentUser == null) return;
+      _products = fresh;
+      _productsFetchedAt = DateTime.now();
+      _persistProducts(fresh);
     } on ApiException catch (e) {
       _productsError = e.message;
     } catch (_) {
@@ -223,10 +305,50 @@ class AppData extends ChangeNotifier {
     }
   }
 
+  /// Segarkan produk di belakang layar: tanpa spinner, tanpa pesan
+  /// error — menu yang sedang tampil tetap dipakai bila jaringan
+  /// gagal; dicoba lagi pada pembukaan halaman berikutnya.
+  Future<void> _refreshProductsSilently() async {
+    final outlet = currentOutlet;
+    if (outlet == null) return;
+    // Catat waktu percobaan sekarang juga supaya pembukaan halaman
+    // beruntun tidak memicu beberapa fetch sekaligus.
+    _productsFetchedAt = DateTime.now();
+    try {
+      final fresh = await ProductService.instance.fetchProducts(outlet.id);
+      if (_currentUser == null) return;
+      _products = fresh;
+      _persistProducts(fresh);
+      notifyListeners();
+    } catch (_) {
+      // Diamkan: menu lama tetap tampil.
+    }
+  }
+
+  /// Simpan daftar produk ke cache persisten outlet saat ini.
+  void _persistProducts(List<Product> fresh) {
+    final outlet = currentOutlet;
+    if (outlet == null) return;
+    unawaited(
+      LocalCache.instance.writeJson(
+        'products_outlet_${outlet.id}',
+        fresh.map((p) => p.toJson()).toList(),
+      ),
+    );
+  }
+
   // ---- Data dari API: master charge (toggle checkout) ----
   List<MasterCharge> _charges = [];
   bool _isLoadingCharges = false;
   String? _chargesError;
+
+  /// Waktu daftar charge terakhir sukses diambil dari API — dasar
+  /// keputusan segar/basi cache.
+  DateTime? _chargesFetchedAt;
+
+  /// Batas usia daftar charge sebelum dianggap perlu segarkan di
+  /// belakang layar. Master charge jarang berubah, cukup 10 menit.
+  static const _chargesTtl = Duration(minutes: 10);
 
   /// Daftar charge aktif (pajak, diskon, dll) dari backend.
   List<MasterCharge> get charges => List.unmodifiable(_charges);
@@ -235,16 +357,80 @@ class AppData extends ChangeNotifier {
 
   String? get chargesError => _chargesError;
 
-  /// Muat daftar charge aktif (sekali muat, dipakai ulang).
+  /// Muat daftar charge aktif dengan pola cache-first:
+  /// - Sesi berjalan: toggle tampil langsung; bila usia data lewat TTL,
+  ///   segarkan senyap di belakang layar (tanpa spinner, tanpa error).
+  /// - App baru dibuka: cache persisten outlet tampil instan supaya
+  ///   toggle checkout tidak menunggu jaringan.
+  /// - [force] selalu fetch langsung ke API.
   Future<void> loadCharges({bool force = false}) async {
-    if (_charges.isNotEmpty && !force) return;
+    if (!force && _charges.isNotEmpty) {
+      if (_chargesFresh) return;
+      unawaited(_refreshChargesSilently());
+      return;
+    }
+
+    if (!force) {
+      final outlet = currentOutlet;
+      if (outlet != null) {
+        final entry = await LocalCache.instance.readJson(
+          'charges_outlet_${outlet.id}',
+        );
+        final cached = _decodeCharges(entry?.payload);
+        if (cached != null && cached.isNotEmpty) {
+          _charges = cached;
+          _chargesFetchedAt = entry!.savedAt;
+          notifyListeners();
+          if (_chargesFresh) return;
+          unawaited(_refreshChargesSilently());
+          return;
+        }
+      }
+    }
+
+    await _fetchCharges();
+  }
+
+  bool get _chargesFresh =>
+      _chargesFetchedAt != null &&
+      DateTime.now().difference(_chargesFetchedAt!) < _chargesTtl;
+
+  /// Ubah payload cache jadi daftar [MasterCharge]; `null` bila formatnya
+  /// tidak dikenali (cache rusak/versi lama) — dianggap tidak ada cache
+  /// sehingga alur fetch normal tetap berjalan.
+  List<MasterCharge>? _decodeCharges(Object? payload) {
+    if (payload is! List) return null;
+    try {
+      return payload
+          .map((e) => MasterCharge.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Fetch charge ke API dengan spinner/error seperti semula, lalu
+  /// simpan hasilnya ke cache persisten outlet.
+  Future<void> _fetchCharges() async {
+    final outlet = currentOutlet;
+    if (outlet == null) {
+      _chargesError = 'Outlet tidak ditemukan untuk user ini.';
+      notifyListeners();
+      return;
+    }
 
     _isLoadingCharges = true;
     _chargesError = null;
     notifyListeners();
 
     try {
-      _charges = await ChargeService.instance.fetchCharges();
+      final fresh = await ChargeService.instance.fetchCharges();
+      // Logout bisa terjadi di tengah fetch: jangan isi state/cache
+      // milik outlet yang barusan ditinggalkan.
+      if (_currentUser == null) return;
+      _charges = fresh;
+      _chargesFetchedAt = DateTime.now();
+      _persistCharges(fresh);
     } on ApiException catch (e) {
       _chargesError = e.message;
     } catch (_) {
@@ -253,6 +439,38 @@ class AppData extends ChangeNotifier {
       _isLoadingCharges = false;
       notifyListeners();
     }
+  }
+
+  /// Segarkan charge di belakang layar: tanpa spinner, tanpa pesan
+  /// error — toggle yang sedang tampil tetap dipakai bila jaringan
+  /// gagal; dicoba lagi pada pembukaan checkout berikutnya.
+  Future<void> _refreshChargesSilently() async {
+    final outlet = currentOutlet;
+    if (outlet == null) return;
+    // Catat waktu percobaan sekarang juga supaya pembukaan halaman
+    // beruntun tidak memicu beberapa fetch sekaligus.
+    _chargesFetchedAt = DateTime.now();
+    try {
+      final fresh = await ChargeService.instance.fetchCharges();
+      if (_currentUser == null) return;
+      _charges = fresh;
+      _persistCharges(fresh);
+      notifyListeners();
+    } catch (_) {
+      // Diamkan: daftar lama tetap tampil.
+    }
+  }
+
+  /// Simpan daftar charge ke cache persisten outlet saat ini.
+  void _persistCharges(List<MasterCharge> fresh) {
+    final outlet = currentOutlet;
+    if (outlet == null) return;
+    unawaited(
+      LocalCache.instance.writeJson(
+        'charges_outlet_${outlet.id}',
+        fresh.map((c) => c.toJson()).toList(),
+      ),
+    );
   }
 
   // ---- Data dari API: orders (transaksi kasir) ----
