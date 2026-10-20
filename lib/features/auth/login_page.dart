@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/data/app_data.dart';
 import '../../core/network/api_exception.dart';
@@ -22,10 +23,31 @@ class _LoginPageState extends State<LoginPage> {
   bool _isSubmitting = false;
   bool _rememberMe = true;
 
+  /// Label versi app, mis. `v1.1.0 (7)` — dibaca runtime dari
+  /// package_info_plus (versionName + versionCode), bukan di-hardcode.
+  /// Kosong bila belum termuat / gagal dibaca (teks tak tampil).
+  String _versionLabel = '';
+
   @override
   void initState() {
     super.initState();
     _loadRememberedCredentials();
+    _loadAppVersion();
+  }
+
+  /// Baca versi app dari platform untuk ditampilkan kecil di bawah
+  /// tombol Masuk. Kegagalan (mis. di unit test) diabaikan — label
+  /// versi hanya informasi.
+  Future<void> _loadAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(
+        () => _versionLabel = 'v${info.version} (${info.buildNumber})',
+      );
+    } catch (_) {
+      // Biarkan kosong.
+    }
   }
 
   /// Prefill form dari kredensial "Ingat saya" yang tersimpan — tetap
@@ -262,6 +284,19 @@ class _LoginPageState extends State<LoginPage> {
                               : const Text('Masuk'),
                         ),
                       ),
+
+                      // Versi app — kecil, hanya informasi.
+                      if (_versionLabel.isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        Text(
+                          _versionLabel,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: AppColors.inkMuted,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
                     ],
                   ),
                 ),

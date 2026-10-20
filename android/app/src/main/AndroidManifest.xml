@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Akses network wajib ada di manifest utama (bukan hanya debug):
+         tanpa ini APK release tidak bisa memanggil API sama sekali. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="Nyemil Nyam"
         android:name="${applicationName}"
