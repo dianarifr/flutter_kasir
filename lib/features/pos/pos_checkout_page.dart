@@ -67,7 +67,7 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
                 )
                 .toList();
 
-            return SafeArea(
+            final content = SafeArea(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -149,6 +149,17 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
                   const SizedBox(height: 8),
                 ],
               ),
+            );
+
+            // Angkat sheet di atas keyboard: kolom cari di dalam sheet
+            // autofocus sehingga keyboard terbuka begitu sheet muncul;
+            // tanpa padding ini sheet menempel di dasar layar dan
+            // tertutup keyboard (kelihatan hanya setelah back).
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+              ),
+              child: content,
             );
           },
         );
