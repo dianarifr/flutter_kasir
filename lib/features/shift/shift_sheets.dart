@@ -59,23 +59,38 @@ class _OpenShiftSheet extends StatefulWidget {
 }
 
 class _OpenShiftSheetState extends State<_OpenShiftSheet> {
-  final _controller = TextEditingController();
+  // Modal awal langsung terisi 0 — kasir tanpa uang di laci cukup
+  // menekan "Buka Shift" tanpa mengetik apa pun.
+  final _controller = TextEditingController(text: '0');
+  final _focusNode = FocusNode();
   bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Field berisi "0": saat difokuskan, seleksi seluruh teks agar
+    // ketikan pertama langsung mengganti 0 — bukan menempel di belakang
+    // hingga menjadi "050000".
+    _focusNode.addListener(() {
+      if (_focusNode.hasFocus) {
+        _controller.selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: _controller.text.length,
+        );
+      }
+    });
+  }
 
   @override
   void dispose() {
     _controller.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
-    final nominal = _parseNominal(_controller.text);
-    if (nominal == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Modal awal wajib diisi.')),
-      );
-      return;
-    }
+    // Field kosong (dibersihkan manual) juga dianggap 0.
+    final nominal = _parseNominal(_controller.text) ?? 0;
 
     setState(() => _submitting = true);
     try {
@@ -139,18 +154,21 @@ class _OpenShiftSheetState extends State<_OpenShiftSheet> {
             ),
             const SizedBox(height: 16),
             const Text(
-              'Masukkan modal awal uang di laci sebelum melayani '
-              'transaksi. Boleh diisi 0 bila laci masih kosong.',
+              'Modal awal uang di laci sebelum melayani transaksi. '
+              'Sudah terisi 0 — ubah angkanya bila laci ada uang.',
               style: TextStyle(fontSize: 13),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _controller,
+              focusNode: _focusNode,
               autofocus: true,
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               decoration: const InputDecoration(
                 labelText: 'Modal awal',
+                // Hanya terlihat bila user mengosongkan field; kosong
+                // tetap dihitung 0 saat submit.
                 hintText: '0',
                 prefixText: 'Rp ',
               ),

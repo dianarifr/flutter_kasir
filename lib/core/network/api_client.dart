@@ -35,6 +35,15 @@ class ApiClient {
 
   void setToken(String? token) => _token = token;
 
+  /// Callback saat sesi hangus (401 pada request yang membawa token).
+  /// Dipasang sekali di main.dart: membersihkan sesi lokal lalu
+  /// mengarahkan user ke halaman login.
+  void Function()? onUnauthorized;
+
+  /// Penanda agar banyak request yang 401 hampir bersamaan hanya
+  /// memicu satu kali callback — satu redirect, bukan bertubi-tubi.
+  bool _isNotifyingUnauthorized = false;
+
   Map<String, String> get _headers => {
     'Accept': 'application/json',
     'Content-Type': 'application/json',
@@ -50,21 +59,23 @@ class ApiClient {
 
   /// GET request; mengembalikan body JSON yang sudah di-decode.
   Future<dynamic> get(String path, {Map<String, dynamic>? query}) async {
+    final hadAuth = _token != null;
     final response = await _client
         .get(_uri(path, query), headers: _headers)
         .timeout(ApiConfig.timeout);
-    return _handle(response);
+    return _handle(response, hadAuth: hadAuth);
   }
 
   /// POST request dengan body JSON.
   Future<dynamic> post(String path, {Object? body}) async {
+    final hadAuth = _token != null;
     final response = await _client
         .post(_uri(path), headers: _headers, body: jsonEncode(body ?? {}))
         .timeout(ApiConfig.timeout);
-    return _handle(response);
+    return _handle(response, hadAuth: hadAuth);
   }
 
-  dynamic _handle(http.Response response) {
+  dynamic _handle(http.Response response, {required bool hadAuth}) {
     final decoded = response.body.isEmpty ? null : jsonDecode(response.body);
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -86,9 +97,22 @@ class ApiClient {
     }
 
     if (response.statusCode == 401) {
-      // Token invalid/kadaluarsa; hapus sesi lokal.
-      _token = null;
-      message = 'Sesi berakhir, silakan login kembali.';
+      // 401 pada request TANPA token berarti login ditolak (email/password
+      // salah) — pesan backend dipakai apa adanya, bukan sesi hangus.
+      if (hadAuth) {
+        // Token invalid/kadaluarsa; hapus sesi lokal.
+        _token = null;
+        message = 'Sesi berakhir, silakan login kembali.';
+
+        if (!_isNotifyingUnauthorized) {
+          _isNotifyingUnauthorized = true;
+          onUnauthorized?.call();
+          // Buka kunci setelah jeda — beberapa request paralel bisa 401
+          // bersamaan dan cukup sekali mengarahkan ke halaman login.
+          Future<void>.delayed(const Duration(seconds: 2))
+              .then((_) => _isNotifyingUnauthorized = false);
+        }
+      }
     }
 
     throw ApiException(message, statusCode: response.statusCode);

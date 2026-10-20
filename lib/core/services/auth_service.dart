@@ -69,6 +69,14 @@ class AuthService {
     }
   }
 
+  /// Bersihkan sesi lokal TANPA memanggil API logout — dipakai saat
+  /// sesi hangus (401): token sudah tidak valid, request logout hanya
+  /// akan 401 lagi. Kredensial "Ingat saya" tetap dipertahankan.
+  Future<void> clearLocalSession() async {
+    _client.setToken(null);
+    await TokenStorage.clear();
+  }
+
   /// Muat sesi tersimpan (token + user) untuk auto-login.
   ///
   /// Mengembalikan user yang tersimpan, atau `null` jika belum login.

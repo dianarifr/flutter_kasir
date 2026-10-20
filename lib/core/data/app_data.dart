@@ -157,6 +157,15 @@ class AppData extends ChangeNotifier {
       // Abaikan error API; pembersihan lokal sudah dilakukan di
       // AuthService.logout (finally).
     }
+    await clearSessionLocal();
+  }
+
+  /// Bersihkan sesi & seluruh data TANPA memanggil API logout backend.
+  ///
+  /// Dipakai saat sesi hangus di tengah pemakaian (401): token sudah
+  /// tidak valid sehingga request logout hanya akan 401 lagi.
+  Future<void> clearSessionLocal() async {
+    await AuthService.instance.clearLocalSession();
     _currentUser = null;
     _productStocks = [];
     _stockError = null;
