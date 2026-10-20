@@ -26,3 +26,13 @@ BUILD_NUMBER="$(git rev-list --count HEAD)"
 echo "==> Build APK release — versionCode=${BUILD_NUMBER} (dari jumlah commit git)"
 
 flutter build apk --release --build-number="${BUILD_NUMBER}" "$@"
+
+# Salin hasil build dengan nama yang mudah dikenali, mis.
+# nyemil-nyam-v1.1.0.apk (versionName dari pubspec.yaml).
+APK="build/app/outputs/flutter-apk/app-release.apk"
+VERSION="$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | cut -d '+' -f1)"
+FINAL="build/app/outputs/flutter-apk/nyemil-nyam-v${VERSION}.apk"
+cp "$APK" "$FINAL"
+echo "==> APK siap:"
+echo "    ${FINAL}"
+echo "    ${APK}  (output asli flutter)"
