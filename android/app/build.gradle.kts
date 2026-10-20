@@ -34,6 +34,14 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            // Plugin Flutter menyalakan R8 minification secara default untuk
+            // build release. R8 me-rename kotlin.coroutines.Continuation,
+            // sehingga binding JNI pigeon (package:jni) yang memakai
+            // descriptor kanonik gagal GetMethodID -> NoSuchMethodError
+            // saat shared_preferences dipakai. Matikan minification agar
+            // nama class/method tetap kanonik seperti mode debug.
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }
