@@ -5,10 +5,11 @@ import '../../core/data/models.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 
-/// Halaman stok bahan (komponen) pada outlet user yang sedang login.
+/// Halaman Sisa Stok bahan/kemasan pada outlet user yang sedang login.
 ///
-/// Data diambil dari API `/components/stock` — sisa stok mentah
-/// tiap bahan beserta satuan dan ambang minimum yang diatur admin.
+/// Data diambil dari API `/components/stock` — sisa stok tiap komponen
+/// beserta tipe (bahan/kemasan), satuan dan ambang minimum yang diatur
+/// admin. Bisa difilter per tipe lewat chip di bawah pencarian.
 class StokBahanPage extends StatefulWidget {
   const StokBahanPage({super.key});
 
@@ -19,6 +20,9 @@ class StokBahanPage extends StatefulWidget {
 class _StokBahanPageState extends State<StokBahanPage> {
   final _searchController = TextEditingController();
   String _query = '';
+
+  /// Filter tipe aktif: `all` | `bahan` | `kemasan`.
+  String _typeFilter = 'all';
 
   @override
   void dispose() {
@@ -48,15 +52,15 @@ class _StokBahanPageState extends State<StokBahanPage> {
           return _ErrorView(message: data.componentError!);
         }
 
-        // Filter lokal berdasarkan nama bahan (case-insensitive).
-        final filtered = _query.isEmpty
-            ? items
-            : items
-                  .where(
-                    (item) =>
-                        item.name.toLowerCase().contains(_query.toLowerCase()),
-                  )
-                  .toList();
+        // Filter lokal: nama (case-insensitive) + tipe komponen.
+        final query = _query.toLowerCase();
+        final filtered = items.where((item) {
+          final matchQuery =
+              query.isEmpty || item.name.toLowerCase().contains(query);
+          final matchType =
+              _typeFilter == 'all' || item.type == _typeFilter;
+          return matchQuery && matchType;
+        }).toList();
 
         return Column(
           children: [
@@ -64,6 +68,10 @@ class _StokBahanPageState extends State<StokBahanPage> {
               controller: _searchController,
               hintText: 'Cari bahan...',
               onChanged: (value) => setState(() => _query = value),
+            ),
+            _TypeFilterBar(
+              selected: _typeFilter,
+              onChanged: (value) => setState(() => _typeFilter = value),
             ),
             Expanded(
               child: items.isEmpty
@@ -74,7 +82,7 @@ class _StokBahanPageState extends State<StokBahanPage> {
                       ),
                     )
                   : filtered.isEmpty
-                  ? _EmptySearchView(query: _query)
+                  ? _EmptySearchView(query: _query, filtered: _typeFilter != 'all')
                   : RefreshIndicator(
                       onRefresh: () => data.loadComponentStock(),
                       child: ListView.separated(
@@ -90,6 +98,57 @@ class _StokBahanPageState extends State<StokBahanPage> {
           ],
         );
       },
+    );
+  }
+}
+
+/// Bar filter tipe komponen — 3 chip sama lebar dalam 1 baris, gaya
+/// pill sama seperti chip periode di Riwayat Penjualan.
+class _TypeFilterBar extends StatelessWidget {
+  const _TypeFilterBar({required this.selected, required this.onChanged});
+
+  final String selected;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Row(
+        children: [
+          _chip('all', 'Semua'),
+          const SizedBox(width: 8),
+          _chip('bahan', 'Bahan'),
+          const SizedBox(width: 8),
+          _chip('kemasan', 'Kemasan'),
+        ],
+      ),
+    );
+  }
+
+  Widget _chip(String value, String label) {
+    final isSelected = selected == value;
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: () => onChanged(value),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.accent : AppColors.surfaceAlt,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12,
+              color: isSelected ? Colors.white : AppColors.ink,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -133,11 +192,14 @@ class _SearchField extends StatelessWidget {
   }
 }
 
-/// Tampilan saat query pencarian tidak menemukan apa pun.
+/// Tampilan saat pencarian / filter tipe tidak menemukan apa pun.
 class _EmptySearchView extends StatelessWidget {
-  const _EmptySearchView({required this.query});
+  const _EmptySearchView({required this.query, this.filtered = false});
 
   final String query;
+
+  /// `true` bila filter tipe aktif — pesan disesuaikan.
+  final bool filtered;
 
   @override
   Widget build(BuildContext context) {
@@ -152,7 +214,9 @@ class _EmptySearchView extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            'Tidak ada hasil untuk "$query".',
+            filtered
+                ? 'Tidak ada hasil untuk filter ini.'
+                : 'Tidak ada hasil untuk "$query".',
             style: const TextStyle(color: AppColors.inkMuted),
           ),
         ],
@@ -194,12 +258,44 @@ class _ComponentCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    item.name,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
+                  // Nama + badge tipe berdempet; badge turun ke baris
+                  // berikutnya bila nama kepanjangan.
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        item.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      // Badge tipe komponen: Bahan / Kemasan.
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: item.type == 'kemasan'
+                              ? AppColors.badgeWarningBg
+                              : AppColors.surfaceAlt,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          item.typeLabel,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: item.type == 'kemasan'
+                                ? AppColors.badgeWarningText
+                                : AppColors.inkMuted,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 2),
                   Text(

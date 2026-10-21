@@ -14,21 +14,26 @@ class AuthService {
 
   /// Login ke backend, simpan token + data user, lalu kembalikan user.
   ///
-  /// [deviceName] wajib oleh backend (mis. "Samsung A54"); default
-  /// diisi dari platform agar memenuhi validasi tanpa package tambahan.
+  /// Backend memvalidasi [username] (bukan email). [deviceName] wajib
+  /// oleh backend (mis. "Samsung A54"); default diisi dari platform agar
+  /// memenuhi validasi tanpa package tambahan.
   ///
   /// [remember] = `true` menyimpan sesi ke penyimpanan lokal agar
   /// app berikutnya langsung auto-login. `false` = sesi hanya hidup
   /// selama app berjalan (token di memori saja, tidak disimpan).
   Future<AuthUser> login({
-    required String email,
+    required String username,
     required String password,
     String deviceName = 'Flutter App',
     bool remember = true,
   }) async {
     final body = await _client.post(
       '/login',
-      body: {'email': email, 'password': password, 'device_name': deviceName},
+      body: {
+        'username': username,
+        'password': password,
+        'device_name': deviceName,
+      },
     );
 
     final data = (body as Map<String, dynamic>)['data'] as Map<String, dynamic>;
@@ -41,7 +46,7 @@ class AuthService {
     // Simpan kredensial utk fitur "Ingat saya" (tetap prefill di login page
     // setelah logout; ikut menghapus kredensial lama bila remember = false).
     await TokenStorage.saveCredentials(
-      email: email,
+      username: username,
       password: password,
       remember: remember,
     );

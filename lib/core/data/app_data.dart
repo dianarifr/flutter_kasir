@@ -737,7 +737,22 @@ class AppData extends ChangeNotifier {
   List<ComponentStock> get criticalStock =>
       _componentStocks.where((s) => s.isCritical).toList();
 
-  List<Order> get recentOrders => _orders.take(4).toList();
+  /// Aktivitas terakhir untuk dashboard (maks 4, terbaru dulu).
+  ///
+  /// Saat shift aktif, hanya order yang dibuat sejak shift dibuka —
+  /// sesuai periode kerja kasir. Tanpa shift: fallback ke order terbaru.
+  List<Order> get recentOrders {
+    final shift = currentShift;
+    var source = _orders;
+    if (shift != null) {
+      source = _orders
+          .where((o) => !o.createdAt.isBefore(shift.startTime))
+          .toList();
+    }
+    final sorted =
+        [...source]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return sorted.take(4).toList();
+  }
 
   // ---- Peringatan stok (non-blocking) ----
 
@@ -886,6 +901,19 @@ class AppData extends ChangeNotifier {
   Future<Order> cancelOrder(Order order) async {
     final updated = await OrderService.instance.cancelOrder(
       int.parse(order.id),
+    );
+    _replaceOrder(updated);
+    unawaited(reloadStocks());
+    return updated;
+  }
+
+  /// Hapus satu item dari order (backend mengembalikan stok bahan item
+  /// dan menghitung ulang total). Order lama di daftar diganti versi baru
+  /// sehingga tampilan total kartu ikut berubah.
+  Future<Order> removeOrderItem(Order order, OrderItem item) async {
+    final updated = await OrderService.instance.removeOrderItem(
+      int.parse(order.id),
+      int.parse(item.itemId),
     );
     _replaceOrder(updated);
     unawaited(reloadStocks());

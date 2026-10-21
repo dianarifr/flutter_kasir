@@ -13,6 +13,7 @@ import '../../core/data/models.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/utils/formatters.dart';
+import '../orders/order_detail_page.dart';
 import 'period_pickers.dart';
 import 'product_sales_page.dart';
 
@@ -187,13 +188,16 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
           children: [
             const Text('Periode', style: TextStyle(fontSize: 12, color: AppColors.inkMuted)),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+            // 4 chip sama lebar dalam 1 baris (font 12) supaya "Custom"
+            // tidak turun ke baris kedua di layar 6,3 inci.
+            Row(
               children: [
                 _periodChip('daily', 'Harian'),
+                const SizedBox(width: 6),
                 _periodChip('monthly', 'Bulanan'),
+                const SizedBox(width: 6),
                 _periodChip('yearly', 'Tahunan'),
+                const SizedBox(width: 6),
                 _periodChip('custom', 'Custom'),
               ],
             ),
@@ -207,24 +211,27 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
 
   Widget _periodChip(String value, String label) {
     final selected = _period == value;
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: () {
-        setState(() => _period = value);
-        _load();
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.accent : AppColors.surfaceAlt,
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            color: selected ? Colors.white : AppColors.ink,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: () {
+          setState(() => _period = value);
+          _load();
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: selected ? AppColors.accent : AppColors.surfaceAlt,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12,
+              color: selected ? Colors.white : AppColors.ink,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            ),
           ),
         ),
       ),
@@ -403,6 +410,14 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
           final order = history.orders[index];
           return ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            // Klik transaksi -> halaman detail (lazy-load GET /orders/{id});
+            // list sengaja ringan tanpa item supaya payload tetap kecil.
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => OrderDetailPage(orderId: order.id),
+              ),
+            ),
             title: Row(
               children: [
                 Expanded(
@@ -425,6 +440,11 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
                 '${order.cashierName.isEmpty ? '-' : order.cashierName}',
                 style: const TextStyle(fontSize: 12, color: AppColors.inkMuted),
               ),
+            ),
+            trailing: const Icon(
+              Icons.chevron_right,
+              size: 20,
+              color: AppColors.inkMuted,
             ),
           );
         },

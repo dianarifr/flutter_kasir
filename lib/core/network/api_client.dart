@@ -75,6 +75,15 @@ class ApiClient {
     return _handle(response, hadAuth: hadAuth);
   }
 
+  /// DELETE request (dipakai hapus item order).
+  Future<dynamic> delete(String path, {Map<String, dynamic>? query}) async {
+    final hadAuth = _token != null;
+    final response = await _client
+        .delete(_uri(path, query), headers: _headers)
+        .timeout(ApiConfig.timeout);
+    return _handle(response, hadAuth: hadAuth);
+  }
+
   dynamic _handle(http.Response response, {required bool hadAuth}) {
     final decoded = response.body.isEmpty ? null : jsonDecode(response.body);
 

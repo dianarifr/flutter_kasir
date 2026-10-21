@@ -35,6 +35,20 @@ class _PosPaymentPageState extends State<PosPaymentPage> {
   int get _splitTotal => _splitCash + _splitNonCash;
   int get _splitRemaining => _total - _splitTotal;
 
+  /// Shortcut nominal dinamis mengikuti total pembayaran:
+  /// - total < 50rb -> selalu 50rb & 100rb
+  /// - 50rb <= total < 100rb -> 100rb
+  /// - total >= 100rb -> kelipatan 100rb di atasnya
+  ///   (total 120rb -> 200rb & 300rb)
+  List<int> get _cashShortcuts {
+    const nominal50 = 50000;
+    const nominal100 = 100000;
+    if (_total < nominal50) return [nominal50, nominal100];
+    if (_total < nominal100) return [nominal100];
+    final base = (_total / nominal100).floor() * nominal100;
+    return [base + nominal100, base + 2 * nominal100];
+  }
+
   @override
   void initState() {
     super.initState();
@@ -169,6 +183,7 @@ class _PosPaymentPageState extends State<PosPaymentPage> {
                           setState(() => _cashGiven = int.tryParse(val) ?? 0),
                     ),
                     const SizedBox(height: 12),
+                    // Shortcut nominal dinamis mengikuti total pembayaran.
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: Row(
@@ -180,44 +195,40 @@ class _PosPaymentPageState extends State<PosPaymentPage> {
                             },
                             child: const Text('Uang Pas'),
                           ),
-                          const SizedBox(width: 8),
-                          OutlinedButton(
-                            onPressed: () {
-                              _cashController.text = '20000';
-                              setState(() => _cashGiven = 20000);
-                            },
-                            child: const Text('Rp 20.000'),
-                          ),
-                          const SizedBox(width: 8),
-                          OutlinedButton(
-                            onPressed: () {
-                              _cashController.text = '50000';
-                              setState(() => _cashGiven = 50000);
-                            },
-                            child: const Text('Rp 50.000'),
-                          ),
-                          const SizedBox(width: 8),
-                          OutlinedButton(
-                            onPressed: () {
-                              _cashController.text = '100000';
-                              setState(() => _cashGiven = 100000);
-                            },
-                            child: const Text('Rp 100.000'),
-                          ),
+                          for (final nominal in _cashShortcuts) ...[
+                            const SizedBox(width: 8),
+                            OutlinedButton(
+                              onPressed: () {
+                                _cashController.text = '$nominal';
+                                setState(() => _cashGiven = nominal);
+                              },
+                              child: Text(formatRupiah(nominal)),
+                            ),
+                          ],
                         ],
                       ),
                     ),
                     const SizedBox(height: 16),
+                    // Label & nominal kembalian dipasangkan di ujung kanan
+                    // (diperbesar agar mudah dibaca kasir).
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        Text('Kembalian:', style: AppTextStyles.bodySmall),
+                        const Text(
+                          'Kembalian:',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
                         Text(
                           _change < 0
                               ? 'Kurang ${formatRupiah(-_change)}'
                               : formatRupiah(_change),
                           style: AppTextStyles.priceTag.copyWith(
-                            fontSize: 16,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
                             color: _change < 0
                                 ? AppColors.error
                                 : AppColors.success,

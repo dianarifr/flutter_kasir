@@ -97,6 +97,9 @@ class Outlet {
 class AuthUser {
   final int id;
   final String name;
+
+  /// Login pakai username (bukan email) sejak backend revisi.
+  final String username;
   final String email;
   final String role;
   final Outlet? outlet;
@@ -104,6 +107,7 @@ class AuthUser {
   const AuthUser({
     required this.id,
     required this.name,
+    this.username = '',
     required this.email,
     required this.role,
     this.outlet,
@@ -112,6 +116,7 @@ class AuthUser {
   factory AuthUser.fromJson(Map<String, dynamic> json) => AuthUser(
     id: json['id'] as int,
     name: json['name'] as String? ?? '',
+    username: json['username'] as String? ?? '',
     email: json['email'] as String? ?? '',
     role: json['role'] as String? ?? 'kasir',
     outlet: json['outlet'] == null
@@ -209,12 +214,16 @@ class ComponentStock {
   /// Ambang minimum yang diatur admin; `0` berarti tidak ada ambang.
   final int minStock;
 
+  /// `bahan` (mentah) atau `kemasan` — untuk badge & filter tipe.
+  final String type;
+
   const ComponentStock({
     required this.id,
     required this.name,
     required this.unit,
     required this.currentStock,
     required this.minStock,
+    this.type = 'bahan',
   });
 
   factory ComponentStock.fromJson(Map<String, dynamic> json) => ComponentStock(
@@ -223,7 +232,11 @@ class ComponentStock {
     unit: json['unit'] as String? ?? '',
     currentStock: json['current_stock'] as int? ?? 0,
     minStock: json['min_stock'] as int? ?? 0,
+    type: json['type'] as String? ?? 'bahan',
   );
+
+  /// Label tipe untuk ditampilkan di UI: "Bahan" / "Kemasan".
+  String get typeLabel => type == 'kemasan' ? 'Kemasan' : 'Bahan';
 
   /// Stok <= ambang minimum yang diatur admin dianggap kritis.
   bool get isCritical => currentStock <= minStock;
@@ -233,6 +246,8 @@ class ComponentStock {
 }
 
 class OrderItem {
+  /// Id baris item dari backend — dipakai untuk hapus item order.
+  final String itemId;
   final String productId;
   final String name;
   final int price;
@@ -240,6 +255,7 @@ class OrderItem {
   final String note;
 
   const OrderItem({
+    required this.itemId,
     required this.productId,
     required this.name,
     required this.price,
@@ -250,7 +266,10 @@ class OrderItem {
   int get subtotal => price * qty;
 
   factory OrderItem.fromJson(Map<String, dynamic> json) => OrderItem(
-    // Backend mengirim product_id integer; di app dipakai sebagai String.
+    // Backend mengirim id & product_id integer; di app dipakai sebagai
+    // String. '-' berarti backend belum mengirim id (server lama) —
+    // tombol hapus disembunyikan untuk item seperti ini.
+    itemId: (json['id'] as num?)?.toString() ?? '-',
     productId: (json['product_id'] as num?)?.toString() ?? '-',
     name: json['product_name'] as String? ?? '',
     price: _asInt(json['price']),

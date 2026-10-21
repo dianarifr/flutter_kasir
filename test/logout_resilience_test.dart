@@ -103,7 +103,7 @@ void main() {
     () async {
       // Simulasi login dengan "Ingat saya" tercentang.
       await TokenStorage.saveCredentials(
-        email: 'kasir@kasir.com',
+        username: 'kasir',
         password: 'kasir123',
         remember: true,
       );
@@ -115,7 +115,7 @@ void main() {
       // ...tapi kredensial tetap ada untuk prefill form login.
       expect(await TokenStorage.readToken(), isNull);
       final creds = await TokenStorage.readCredentials();
-      expect(creds.email, 'kasir@kasir.com');
+      expect(creds.username, 'kasir');
       expect(creds.password, 'kasir123');
       expect(creds.remember, isTrue);
     },
@@ -124,20 +124,20 @@ void main() {
   test('kredensial dihapus bila user memilih tidak ingat saat login', () async {
     // Login pertama dengan remember = true.
     await TokenStorage.saveCredentials(
-      email: 'kasir@kasir.com',
+      username: 'kasir',
       password: 'kasir123',
       remember: true,
     );
 
     // Login berikutnya dengan remember = false.
     await TokenStorage.saveCredentials(
-      email: 'kasir.pandugo@kasir.com',
+      username: 'pandugo',
       password: 'kasir123',
       remember: false,
     );
 
     final creds = await TokenStorage.readCredentials();
-    expect(creds.email, isNull);
+    expect(creds.username, isNull);
     expect(creds.password, isNull);
     expect(creds.remember, isFalse);
   });

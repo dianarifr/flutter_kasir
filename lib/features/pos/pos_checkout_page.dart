@@ -220,6 +220,12 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
       _showError('Keranjang masih kosong');
       return;
     }
+    // "Buat Pesanan" menuntut nama pelanggan tercatat; "Bayar Langsung"
+    // tetap memperbolehkan nama kosong.
+    if (!goToPayment && _customerController.text.trim().isEmpty) {
+      _showError('Nama pelanggan wajib diisi untuk membuat pesanan.');
+      return;
+    }
     if (_isSubmitting) return;
 
     setState(() => _isSubmitting = true);
@@ -441,10 +447,14 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
                       ),
                       const SizedBox(height: 24),
 
-                      // 2. Nama pelanggan (opsional) — tersimpan saat order dibuat.
-                      const Text(
-                        'Nama Pelanggan (Opsional)',
-                        style: TextStyle(
+                      // 2. Nama pelanggan — tersimpan saat order dibuat.
+                      // Wajib khusus metode "Buat Pesanan", opsional bila
+                      // bayar langsung.
+                      Text(
+                        _selectedMethod == 1
+                            ? 'Nama Pelanggan (Wajib)'
+                            : 'Nama Pelanggan (Opsional)',
+                        style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
                         ),
@@ -499,13 +509,18 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
                                 ),
                               )
                             else if (_data.charges.isEmpty)
-                              const Padding(
-                                padding: EdgeInsets.all(16),
-                                child: Text(
-                                  'Tidak ada pajak/diskon yang tersedia',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: AppColors.inkMuted,
+                              // Full width supaya teks membentang selebar
+                              // card (rata kiri), bukan melayang di tengah.
+                              const SizedBox(
+                                width: double.infinity,
+                                child: Padding(
+                                  padding: EdgeInsets.all(16),
+                                  child: Text(
+                                    'Tidak ada pajak/diskon yang tersedia',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: AppColors.inkMuted,
+                                    ),
                                   ),
                                 ),
                               )

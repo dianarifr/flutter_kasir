@@ -5,6 +5,7 @@ import '../../core/theme/app_text_styles.dart';
 import '../../core/data/app_data.dart';
 import '../../core/data/models.dart';
 import '../../core/utils/formatters.dart';
+import '../orders/order_detail_page.dart';
 import '../shift/shift_sheets.dart';
 import 'sales_detail_sheet.dart';
 
@@ -112,6 +113,18 @@ class _DashboardPageState extends State<DashboardPage> {
                       itemBuilder: (context, index) {
                         final order = data.recentOrders[index];
                         return ListTile(
+                          // Klik aktivitas -> detail transaksi. Order dari
+                          // `/orders` sudah membawa items, jadi halaman
+                          // detail langsung render tanpa fetch ulang.
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => OrderDetailPage(
+                                orderId: order.id,
+                                order: order,
+                              ),
+                            ),
+                          ),
                           leading: Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(

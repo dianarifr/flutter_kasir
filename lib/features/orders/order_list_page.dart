@@ -21,7 +21,6 @@ class _OrderListPageState extends State<OrderListPage>
   late TabController _tabController;
   String _query = '';
   final Map<String, bool> _expandedState = {};
-  final Set<String> _checkedItems = {};
 
   AppData get _data => AppData.instance;
 
@@ -76,13 +75,6 @@ class _OrderListPageState extends State<OrderListPage>
     return orders;
   }
 
-  void _toggleItem(Order order, OrderItem item) {
-    final key = '${order.id}|${item.productId}';
-    setState(() {
-      if (!_checkedItems.add(key)) _checkedItems.remove(key);
-    });
-  }
-
   /// Batalkan pesanan lewat backend (stok bahan dikembalikan server).
   /// Backend menolak batal untuk order yang sudah dibayar.
   Future<void> _cancelOrder(Order order) async {
@@ -92,6 +84,59 @@ class _OrderListPageState extends State<OrderListPage>
       messenger.showSnackBar(
         const SnackBar(
           content: Text('Pesanan dibatalkan, stok bahan dikembalikan.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } on ApiException catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: AppColors.error),
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Tidak dapat terhubung ke server.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  /// Hapus satu item dari order (stok bahan item dikembalikan server,
+  /// total kartu ikut menyesuaikan karena order diganti versi terbaru).
+  Future<void> _removeItem(Order order, OrderItem item) async {
+    // Diambil sebelum await dialog agar tidak menyentuh BuildContext
+    // lintas async gap.
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Hapus Item'),
+        content: Text(
+          'Hapus ${item.qty}x ${item.name} dari pesanan ini? '
+          'Stok bahan akan dikembalikan.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text(
+              'Hapus',
+              style: TextStyle(color: AppColors.error),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await _data.removeOrderItem(order, item);
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Item dihapus, stok bahan dikembalikan.'),
           backgroundColor: AppColors.success,
         ),
       );
@@ -483,18 +528,16 @@ class _OrderListPageState extends State<OrderListPage>
   }
 
   Widget _buildOrderItem(Order order, OrderItem item) {
-    final isChecked = _checkedItems.contains('${order.id}|${item.productId}');
+    // Hanya order yang masih diproses yang boleh item-nya dihapus;
+    // backend menolak untuk order lunas/batal. itemId '-' berarti
+    // backend belum mengirim id item (server lama).
+    final canDelete =
+        order.status == OrderStatus.diproses && item.itemId != '-';
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
-          if (order.status == OrderStatus.diproses)
-            Checkbox(
-              value: isChecked,
-              activeColor: AppColors.accent,
-              onChanged: (_) => _toggleItem(order, item),
-            ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -518,6 +561,18 @@ class _OrderListPageState extends State<OrderListPage>
             formatRupiah(item.subtotal),
             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
           ),
+          // Tombol hapus item, berdempet dengan harga.
+          if (canDelete)
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(
+                Icons.delete_outline,
+                size: 20,
+                color: AppColors.error,
+              ),
+              tooltip: 'Hapus item',
+              onPressed: () => _removeItem(order, item),
+            ),
         ],
       ),
     );

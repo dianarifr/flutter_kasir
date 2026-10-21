@@ -17,7 +17,7 @@ class TokenStorage {
 
   // Kredensial "Ingat saya" — sengaja dipisah dari sesi agar TIDAK ikut
   // terhapus saat logout (prefill form login setelah logout).
-  static const _rememberedEmailKey = 'remembered_email';
+  static const _rememberedUsernameKey = 'remembered_username';
   static const _rememberedPasswordKey = 'remembered_password';
   static const _rememberMeKey = 'remember_me';
 
@@ -62,20 +62,20 @@ class TokenStorage {
 
   /// Simpan kredensial untuk fitur "Ingat saya".
   ///
-  /// `remember = true`  → email + password disimpan (prefill di login page).
+  /// `remember = true`  → username + password disimpan (prefill di login page).
   /// `remember = false` → kredensial lama dihapus (user menolak diingat).
   static Future<void> saveCredentials({
-    required String email,
+    required String username,
     required String password,
     required bool remember,
   }) async {
     final prefs = await _prefs;
     if (remember) {
-      await prefs.setString(_rememberedEmailKey, email);
+      await prefs.setString(_rememberedUsernameKey, username);
       await prefs.setString(_rememberedPasswordKey, password);
       await prefs.setBool(_rememberMeKey, true);
     } else {
-      await prefs.remove(_rememberedEmailKey);
+      await prefs.remove(_rememberedUsernameKey);
       await prefs.remove(_rememberedPasswordKey);
       await prefs.setBool(_rememberMeKey, false);
     }
@@ -83,13 +83,13 @@ class TokenStorage {
 
   /// Ambil kredensial tersimpan untuk prefill form login.
   ///
-  /// Mengembalikan record berisi email/password (bisa `null` bila belum
+  /// Mengembalikan record berisi username/password (bisa `null` bila belum
   /// pernah login dengan "Ingat saya") dan status checkbox terakhir.
-  static Future<({String? email, String? password, bool remember})>
+  static Future<({String? username, String? password, bool remember})>
   readCredentials() async {
     final prefs = await _prefs;
     return (
-      email: prefs.getString(_rememberedEmailKey),
+      username: prefs.getString(_rememberedUsernameKey),
       password: prefs.getString(_rememberedPasswordKey),
       remember: prefs.getBool(_rememberMeKey) ?? true,
     );
@@ -98,7 +98,7 @@ class TokenStorage {
   /// Hapus kredensial "Ingat saya" (mis. user ubah checkbox jadi tidak ingat).
   static Future<void> clearCredentials() async {
     final prefs = await _prefs;
-    await prefs.remove(_rememberedEmailKey);
+    await prefs.remove(_rememberedUsernameKey);
     await prefs.remove(_rememberedPasswordKey);
     await prefs.remove(_rememberMeKey);
   }

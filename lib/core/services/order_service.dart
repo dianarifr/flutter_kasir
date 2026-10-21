@@ -4,7 +4,10 @@
 /// - [createOrder]      : POST /orders — simpan order (status diproses, belum bayar).
 /// - [payOrder]         : POST /orders/{id}/pay — bayar tunai/non tunai/campuran.
 /// - [cancelOrder]      : POST /orders/{id}/cancel — batalkan + stok dikembalikan.
+/// - [removeOrderItem]  : DELETE /orders/{id}/items/{itemId} — hapus 1 item,
+///   stok item dikembalikan & total dihitung ulang.
 /// - [fetchOrders]      : GET /orders — daftar order hari ini.
+/// - [fetchOrder]       : GET /orders/{id} — detail satu order (lengkap).
 /// - [fetchCustomers]   : GET /orders/customers — nama pelanggan (10 terbaru).
 library;
 
@@ -91,6 +94,16 @@ class OrderService {
     );
   }
 
+  /// Hapus satu item dari order yang masih diproses.
+  /// Backend mengembalikan stok bahan item & menghitung ulang total;
+  /// response berisi order versi terbaru.
+  Future<Order> removeOrderItem(int orderId, int itemId) async {
+    final body = await _client.delete('/orders/$orderId/items/$itemId');
+    return Order.fromJson(
+      (body as Map<String, dynamic>)['data'] as Map<String, dynamic>,
+    );
+  }
+
   /// Daftar nama pelanggan (maksimal 10 terbaru) untuk autocomplete
   /// di checkout — diambil dari distinct customer_name order.
   Future<List<String>> fetchCustomers(int outletId) async {
@@ -124,6 +137,17 @@ class OrderService {
     return data
         .map((e) => Order.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  /// Detail satu order (item, charge, data pembayaran lengkap).
+  ///
+  /// Dipakai halaman detail transaksi Riwayat Penjualan supaya list
+  /// `/sales-history` tetap ringan — detail dimuat saat dibuka saja.
+  Future<Order> fetchOrder(String orderId) async {
+    final body = await _client.get('/orders/$orderId');
+    return Order.fromJson(
+      (body as Map<String, dynamic>)['data'] as Map<String, dynamic>,
+    );
   }
 
   /// Format tanggal YYYY-MM-DD untuk query parameter.

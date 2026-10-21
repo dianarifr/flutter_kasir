@@ -16,7 +16,7 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final _emailController = TextEditingController();
+  final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isObscure = true;
@@ -58,16 +58,16 @@ class _LoginPageState extends State<LoginPage> {
     if (!mounted) return;
     setState(() {
       _rememberMe = creds.remember;
-      final email = creds.email;
+      final username = creds.username;
       final password = creds.password;
-      if (email != null) _emailController.text = email;
+      if (username != null) _usernameController.text = username;
       if (password != null) _passwordController.text = password;
     });
   }
 
   @override
   void dispose() {
-    _emailController.dispose();
+    _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -81,7 +81,7 @@ class _LoginPageState extends State<LoginPage> {
 
     try {
       final user = await AuthService.instance.login(
-        email: _emailController.text.trim(),
+        username: _usernameController.text.trim(),
         password: _passwordController.text,
         remember: _rememberMe,
       );
@@ -159,32 +159,32 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       const SizedBox(height: 32),
 
-                      // 2. Input Email
+                      // 2. Input Username
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Email',
+                            'Username',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               fontWeight: FontWeight.w500,
                             ),
                           ),
                           const SizedBox(height: 8),
                           TextFormField(
-                            controller: _emailController,
-                            keyboardType: TextInputType.emailAddress,
+                            controller: _usernameController,
+                            keyboardType: TextInputType.text,
                             validator: (value) {
                               if (value == null || value.trim().isEmpty) {
-                                return 'Email wajib diisi.';
-                              }
-                              if (!value.contains('@')) {
-                                return 'Format email tidak valid.';
+                                return 'Username wajib diisi.';
                               }
                               return null;
                             },
                             decoration: const InputDecoration(
-                              hintText: 'Masukkan Email',
-                              prefixIcon: Icon(Icons.email_outlined, size: 20),
+                              hintText: 'Masukkan Username',
+                              prefixIcon: Icon(
+                                Icons.person_outline,
+                                size: 20,
+                              ),
                             ),
                           ),
                         ],

@@ -7,7 +7,6 @@ import '../pos/pos_catalog_page.dart';
 import '../auth/login_page.dart';
 import '../orders/order_list_page.dart';
 import '../stock/stok_bahan_page.dart';
-import '../stock/stok_produk_page.dart';
 import '../history/sales_history_page.dart';
 import '../shift/shift_sheets.dart';
 
@@ -45,8 +44,7 @@ class _MainShellState extends State<MainShell> {
   final List<String> _titles = [
     'Dashboard',
     'Kasir (POS)',
-    'Stok Produk',
-    'Stok Bahan',
+    'Sisa Stok',
     'Daftar Pesanan',
     'Riwayat Penjualan',
   ];
@@ -54,7 +52,6 @@ class _MainShellState extends State<MainShell> {
   final List<Widget> _pages = [
     const DashboardPage(),
     const PosCatalogPage(),
-    const StokProdukPage(),
     const StokBahanPage(),
     const OrderListPage(),
     const SalesHistoryPage(),
@@ -74,6 +71,11 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final user = AppData.instance.currentUser;
+    // Identitas di drawer: username hasil login (fallback email untuk
+    // sesi lama yang belum menyimpan username).
+    final identity =
+        (user?.username.isNotEmpty ?? false) ? user!.username : (user?.email ?? '-');
     return Scaffold(
       appBar: AppBar(
         leading: Builder(
@@ -136,28 +138,22 @@ class _MainShellState extends State<MainShell> {
                     'Kasir (POS)',
                   ),
                   _buildMenuItem(
-                    4,
+                    3,
                     Icons.receipt_long_outlined,
                     Icons.receipt_long,
                     'Daftar Pesanan',
                   ),
                   _buildMenuItem(
-                    5,
+                    4,
                     Icons.query_stats_outlined,
                     Icons.query_stats,
                     'Riwayat Penjualan',
                   ),
                   _buildMenuItem(
-                    3,
+                    2,
                     Icons.egg_outlined,
                     Icons.egg,
-                    'Stok Bahan',
-                  ),
-                  _buildMenuItem(
-                    2,
-                    Icons.inventory_2_outlined,
-                    Icons.inventory_2,
-                    'Stok Produk',
+                    'Sisa Stok',
                   ),
                 ],
               ),
@@ -191,7 +187,7 @@ class _MainShellState extends State<MainShell> {
                           ),
                         ),
                         Text(
-                          AppData.instance.currentUser?.email ?? '-',
+                          identity,
                           style: const TextStyle(
                             fontSize: 11,
                             color: AppColors.inkMuted,
