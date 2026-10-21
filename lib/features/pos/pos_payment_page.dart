@@ -76,9 +76,11 @@ class _PosPaymentPageState extends State<PosPaymentPage> {
   }
 
   /// Sinkronkan isi field Kembalian dengan nilai [_change] terkini.
+  /// Uang kurang ditandai minus (warna merah) tanpa kata tambahan agar
+  /// nominalnya tetap mudah dibaca.
   void _syncChangeField() {
     _changeController.text = _change < 0
-        ? 'Kurang ${formatRupiah(-_change)}'
+        ? '-${formatRupiah(-_change)}'
         : formatRupiah(_change);
   }
 

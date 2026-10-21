@@ -52,7 +52,9 @@ static void my_application_activate(GApplication* application) {
     gtk_window_set_title(window, "flutter_kasir");
   }
 
-  gtk_window_set_default_size(window, 800, 400);
+  // Default ukuran jendela = layar logis HP 5,5 inci (414x736 dp,
+  // setara iPhone 8 Plus 1080p @3x) supaya uji layout desktop setara HP.
+  gtk_window_set_default_size(window, 414, 736);
 
   gtk_widget_set_size_request(GTK_WIDGET(window), 360, 640);
 
