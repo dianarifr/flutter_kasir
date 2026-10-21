@@ -19,6 +19,7 @@ class PosPaymentPage extends StatefulWidget {
 
 class _PosPaymentPageState extends State<PosPaymentPage> {
   final _cashController = TextEditingController();
+  final _changeController = TextEditingController();
   final _splitCashController = TextEditingController();
   final _splitNonCashController = TextEditingController();
 
@@ -54,14 +55,31 @@ class _PosPaymentPageState extends State<PosPaymentPage> {
     super.initState();
     _cashGiven = _total;
     _cashController.text = _total.toString();
+    _syncChangeField();
   }
 
   @override
   void dispose() {
     _cashController.dispose();
+    _changeController.dispose();
     _splitCashController.dispose();
     _splitNonCashController.dispose();
     super.dispose();
+  }
+
+  /// Terapkan nominal tunai lalu segarkan field Kembalian.
+  void _applyCash(int value) {
+    setState(() {
+      _cashGiven = value;
+      _syncChangeField();
+    });
+  }
+
+  /// Sinkronkan isi field Kembalian dengan nilai [_change] terkini.
+  void _syncChangeField() {
+    _changeController.text = _change < 0
+        ? 'Kurang ${formatRupiah(-_change)}'
+        : formatRupiah(_change);
   }
 
   void _showError(String message) {
@@ -175,12 +193,71 @@ class _PosPaymentPageState extends State<PosPaymentPage> {
                       style: TextStyle(fontSize: 12, color: AppColors.inkMuted),
                     ),
                     const SizedBox(height: 16),
-                    TextField(
-                      controller: _cashController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(prefixText: 'Rp '),
-                      onChanged: (val) =>
-                          setState(() => _cashGiven = int.tryParse(val) ?? 0),
+                    // Dua kolom dalam 1 baris: Nominal Bayar (bisa
+                    // diketik) dan Kembalian (readonly, mengikuti
+                    // nominal bayar).
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Nominal Bayar',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.inkMuted,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              TextField(
+                                controller: _cashController,
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(
+                                  prefixText: 'Rp ',
+                                ),
+                                onChanged: (val) =>
+                                    _applyCash(int.tryParse(val) ?? 0),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Kembalian',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.inkMuted,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              TextField(
+                                controller: _changeController,
+                                readOnly: true,
+                                showCursor: false,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: _change < 0
+                                      ? AppColors.error
+                                      : AppColors.success,
+                                ),
+                                decoration: InputDecoration(
+                                  filled: true,
+                                  fillColor: AppColors.surfaceAlt,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 12),
                     // Shortcut nominal dinamis mengikuti total pembayaran.
@@ -191,7 +268,7 @@ class _PosPaymentPageState extends State<PosPaymentPage> {
                           OutlinedButton(
                             onPressed: () {
                               _cashController.text = _total.toString();
-                              setState(() => _cashGiven = _total);
+                              _applyCash(_total);
                             },
                             child: const Text('Uang Pas'),
                           ),
@@ -200,41 +277,13 @@ class _PosPaymentPageState extends State<PosPaymentPage> {
                             OutlinedButton(
                               onPressed: () {
                                 _cashController.text = '$nominal';
-                                setState(() => _cashGiven = nominal);
+                                _applyCash(nominal);
                               },
                               child: Text(formatRupiah(nominal)),
                             ),
                           ],
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    // Label & nominal kembalian dipasangkan di ujung kanan
-                    // (diperbesar agar mudah dibaca kasir).
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        const Text(
-                          'Kembalian:',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          _change < 0
-                              ? 'Kurang ${formatRupiah(-_change)}'
-                              : formatRupiah(_change),
-                          style: AppTextStyles.priceTag.copyWith(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: _change < 0
-                                ? AppColors.error
-                                : AppColors.success,
-                          ),
-                        ),
-                      ],
                     ),
                   ],
 
