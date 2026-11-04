@@ -425,25 +425,32 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildMethodCard(
-                              index: 0,
-                              title: 'Bayar Langsung',
-                              subtitle:
-                                  'Pembeli langsung melakukan pembayaran.',
+                      // IntrinsicHeight + stretch agar kedua card selalu
+                      // setinggi card tertinggi, meski panjang subtitle
+                      // berbeda (mis. layar 5.5 inci).
+                      IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              child: _buildMethodCard(
+                                index: 0,
+                                title: 'Bayar Langsung',
+                                subtitle:
+                                    'Pembeli langsung melakukan pembayaran.',
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildMethodCard(
-                              index: 1,
-                              title: 'Buat Pesanan',
-                              subtitle: 'Pembayaran dilakukan setelah proses pemesanan selesai.',
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildMethodCard(
+                                index: 1,
+                                title: 'Buat Pesanan',
+                                subtitle:
+                                    'Pembayaran dilakukan setelah proses pemesanan selesai.',
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 24),
 
