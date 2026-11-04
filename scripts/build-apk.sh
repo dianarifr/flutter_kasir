@@ -25,14 +25,37 @@ export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
 BUILD_NUMBER="$(git rev-list --count HEAD)"
 echo "==> Build APK release — versionCode=${BUILD_NUMBER} (dari jumlah commit git)"
 
+APK_DIR="build/app/outputs/flutter-apk"
+# Buang APK dari build sebelumnya agar hasil split dan universal tidak
+# tercampur (mis. app-release.apk lama ikut tersalin saat mode split).
+rm -f "$APK_DIR"/app-release.apk "$APK_DIR"/app-*-release.apk
+
 flutter build apk --release --build-number="${BUILD_NUMBER}" "$@"
 
 # Salin hasil build dengan nama yang mudah dikenali, mis.
-# nyemil-nyam-v1.1.0.apk (versionName dari pubspec.yaml).
-APK="build/app/outputs/flutter-apk/app-release.apk"
+# nyemil-nyam-v1.2.0.apk (universal) atau
+# nyemil-nyam-v1.2.0-arm64-v8a.apk (--split-per-abi).
 VERSION="$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | cut -d '+' -f1)"
-FINAL="build/app/outputs/flutter-apk/nyemil-nyam-v${VERSION}.apk"
-cp "$APK" "$FINAL"
-echo "==> APK siap:"
-echo "    ${FINAL}"
-echo "    ${APK}  (output asli flutter)"
+
+FOUND=0
+for apk in "$APK_DIR"/app-release.apk "$APK_DIR"/app-*-release.apk; do
+  [ -f "$apk" ] || continue
+  name="$(basename "$apk")"
+  if [ "$name" = "app-release.apk" ]; then
+    suffix=""
+  else
+    # app-arm64-v8a-release.apk -> arm64-v8a
+    suffix="-${name#app-}"
+    suffix="${suffix%-release.apk}"
+  fi
+  final="${APK_DIR}/nyemil-nyam-v${VERSION}${suffix}.apk"
+  cp "$apk" "$final"
+  FOUND=1
+  echo "==> APK siap: ${final}"
+  [ -z "$suffix" ] || echo "    (versionCode APK split = nilai dasar + 1000 * kode ABI, normal)"
+done
+
+if [ "$FOUND" -eq 0 ]; then
+  echo "!! Tidak ada APK yang dihasilkan di ${APK_DIR}" >&2
+  exit 1
+fi
