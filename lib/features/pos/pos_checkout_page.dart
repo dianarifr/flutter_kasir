@@ -38,6 +38,10 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _data.loadCharges();
       _data.loadCustomers();
+      // Stok produk berdetail dipakai kartu peringatan bahan kurang di
+      // halaman ini. Dimuat di sini agar kartu tetap akurat walau
+      // halaman katalog POS belum pernah dibuka pada sesi ini.
+      if (!_data.isLoadingStock) _data.loadProductStock(withDetail: true);
     });
   }
 
@@ -239,13 +243,6 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
         notes: _notes,
       );
 
-      // Peringatan bahan habis/minus dari backend — pesanan tetap tersimpan.
-      // Ditampilkan DULU sebelum pindah halaman, karena halaman checkout
-      // akan ditutup/diganti setelahnya.
-      if (result.warnings.isNotEmpty && mounted) {
-        await _showWarningsSheet(result.warnings);
-      }
-
       if (goToPayment) {
         // Bayar langsung: lanjut ke halaman pembayaran dengan order dari server.
         navigator.pushReplacement(
@@ -278,77 +275,6 @@ class _PosCheckoutPageState extends State<PosCheckoutPage> {
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
-  }
-
-  /// Bottom sheet daftar bahan yang habis/minus setelah order disimpan.
-  /// Menunggu sampai sheet ditutup (dipakai `await`).
-  Future<void> _showWarningsSheet(List<StockWarning> warnings) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(
-                    Icons.warning_amber_rounded,
-                    color: AppColors.error,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Peringatan Stok Bahan',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: AppColors.ink,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              ...warnings.map(
-                (w) => Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(
-                        Icons.circle,
-                        size: 5,
-                        color: AppColors.inkMuted,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(w.label, style: const TextStyle(fontSize: 13))),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'Sisa bahan bisa minus. Transaksi tetap tersimpan.',
-                style: TextStyle(fontSize: 12, color: AppColors.inkMuted),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () => Navigator.pop(sheetContext),
-                  child: const Text('Mengerti'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   void _showError(String message) {

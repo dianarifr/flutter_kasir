@@ -26,104 +26,19 @@ class _PosCatalogPageState extends State<PosCatalogPage> {
     // Produk dimuat cache-first: tampil instan dari data sesi/cache
     // persisten, disegarkan senyap di belakang layar bila usia data
     // lewat TTL (lihat AppData.loadProducts). Stok produk ikut dimuat
-    // DENGAN detail komponen supaya kasir bisa diperingatkan saat
-    // menambah produk yang bahannya kurang/habis.
+    // DENGAN detail komponen karena kartu peringatan bahan kurang di
+    // halaman checkout memakai data ini.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_data.isLoadingProducts) _data.loadProducts();
       if (!_data.isLoadingStock) _data.loadProductStock(withDetail: true);
     });
   }
 
-  /// Tambah ke keranjang + peringatan non-blocking bila bahan penyusun
-  /// produk kurang/habis. Pesanan tetap bisa dilanjutkan — kasir hanya
-  /// diberi tahu.
-  void _addProduct(String productId) {
-    final newQty = _data.cartQty(productId) + 1;
-    _data.addToCart(productId);
-
-    final issues = _data.stockIssuesFor(productId, newQty);
-    if (issues.isEmpty) return;
-
-    final matches = _data.products.where((p) => p.id == productId);
-    final productName = matches.isEmpty ? '-' : matches.first.name;
-    _showStockWarningDialog(productName, issues);
-  }
-
-  void _showStockWarningDialog(String productName, List<String> issues) {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: Row(
-          children: [
-            const Icon(
-              Icons.warning_amber_rounded,
-              color: AppColors.error,
-              size: 22,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Stok Bahan Kurang',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.ink,
-                ),
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              productName,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-              ),
-            ),
-            const SizedBox(height: 8),
-            ...issues.map(
-              (issue) => Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(
-                      Icons.circle,
-                      size: 5,
-                      color: AppColors.inkMuted,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        issue,
-                        style: const TextStyle(fontSize: 13),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Pesanan tetap bisa dilanjutkan.',
-              style: TextStyle(fontSize: 12, color: AppColors.inkMuted),
-            ),
-          ],
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Lanjutkan'),
-          ),
-        ],
-      ),
-    );
-  }
+  /// Tambah produk ke keranjang.
+  ///
+  /// Tanpa dialog peringatan stok — peringatan bahan kurang hanya
+  /// tampil sebagai kartu di halaman checkout.
+  void _addProduct(String productId) => _data.addToCart(productId);
 
   @override
   void dispose() {
