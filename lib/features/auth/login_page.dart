@@ -254,18 +254,6 @@ class _LoginPageState extends State<LoginPage> {
                             'Ingat saya',
                             style: TextStyle(fontSize: 13),
                           ),
-                          Expanded(
-                            child: Text(
-                              _rememberMe
-                                  ? 'Simpan akun (auto-login & ganti cepat)'
-                                  : 'Login ulang tiap buka app',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: AppColors.inkMuted,
-                              ),
-                              textAlign: TextAlign.right,
-                            ),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 16),
