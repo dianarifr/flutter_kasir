@@ -4,7 +4,7 @@ import '../../core/data/app_data.dart';
 import '../../core/theme/app_colors.dart';
 import 'dashboard_page.dart';
 import '../pos/pos_catalog_page.dart';
-import '../auth/login_page.dart';
+import '../auth/account_switcher_sheet.dart';
 import '../orders/order_list_page.dart';
 import '../stock/stok_bahan_page.dart';
 import '../history/sales_history_page.dart';
@@ -20,12 +20,22 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
 
+  /// Dipakai untuk menutup drawer dari tombol logout di dalamnya.
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
   @override
   void initState() {
     super.initState();
     // Shift wajib: begitu masuk app (login / auto-login), muat shift
     // aktif lalu tampilkan modal "Buka Shift" bila belum ada.
-    _ensureShiftOpen();
+    //
+    // Ditunda ke post-frame: `loadCurrentShift()` langsung memanggil
+    // notifyListeners(), sedangkan `MainShell` dibangun di dalam
+    // ListenableBuilder milik `home` — notifikasi saat build memicu
+    // assertion framework `'!_dirty': is not true`.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _ensureShiftOpen();
+    });
   }
 
   Future<void> _ensureShiftOpen() async {
@@ -57,15 +67,16 @@ class _MainShellState extends State<MainShell> {
     const SalesHistoryPage(),
   ];
 
-  /// Logout: panggil API, bersihkan state, lalu kembali ke halaman login.
+  /// Logout perangkat ini. Bila masih ada akun tersimpan lain, app
+  /// otomatis pindah ke akun itu; bila tidak ada, kembali ke login.
   Future<void> _handleLogout() async {
+    _scaffoldKey.currentState?.closeDrawer();
     await AppData.instance.logout();
 
     if (!mounted) return;
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const LoginPage()),
-    );
+    // Tutup halaman yang mungkin masih terbuka di atas shell. Route
+    // pertama (home) tetap, isinya sudah diganti lewat ListenableBuilder.
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   @override
@@ -77,6 +88,7 @@ class _MainShellState extends State<MainShell> {
     final identity =
         (user?.username.isNotEmpty ?? false) ? user!.username : (user?.email ?? '-');
     return Scaffold(
+      key: _scaffoldKey,
       appBar: AppBar(
         leading: Builder(
           builder: (context) => IconButton(
@@ -88,9 +100,41 @@ class _MainShellState extends State<MainShell> {
         ),
         title: Text(_titles[_selectedIndex]),
         actions: [
-          Chip(
-            avatar: const Icon(Icons.store_outlined, size: 16),
-            label: Text(AppData.instance.currentOutlet?.name ?? 'Tanpa Outlet'),
+          InkWell(
+            onTap: () => showAccountSwitcherSheet(context),
+            borderRadius: BorderRadius.circular(999),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircleAvatar(
+                    radius: 14,
+                    backgroundColor: AppColors.surfaceAlt,
+                    child: Icon(Icons.person_outline, size: 16),
+                  ),
+                  const SizedBox(width: 8),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 120),
+                    child: Text(
+                      identity,
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(
+                    Icons.unfold_more,
+                    size: 16,
+                    color: AppColors.inkMuted,
+                  ),
+                ],
+              ),
+            ),
           ),
           const SizedBox(width: 16),
         ],

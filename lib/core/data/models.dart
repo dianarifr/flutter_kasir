@@ -91,6 +91,14 @@ class Outlet {
     name: json['name'] as String? ?? '',
     address: json['address'] as String? ?? '',
   );
+
+  /// Bentuk untuk disimpan di daftar akun ([AccountStore]) — simetris
+  /// dengan [fromJson].
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'address': address,
+  };
 }
 
 /// User yang sedang login, termasuk outlet-nya (bisa null untuk admin).
@@ -123,6 +131,17 @@ class AuthUser {
         ? null
         : Outlet.fromJson(json['outlet'] as Map<String, dynamic>),
   );
+
+  /// Bentuk untuk disimpan di daftar akun ([AccountStore]) — simetris
+  /// dengan [fromJson].
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'username': username,
+    'email': email,
+    'role': role,
+    'outlet': outlet?.toJson(),
+  };
 }
 
 /// Satu komponen penyusun produk beserta stoknya di outlet.

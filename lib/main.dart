@@ -2,16 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'core/data/app_data.dart';
-import 'core/data/models.dart';
 import 'core/network/api_client.dart';
+import 'core/services/account_store.dart';
 import 'core/services/auth_service.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/login_page.dart';
 import 'features/dashboard/main_shell.dart';
 
-/// Kunci navigator global — dipakai handler sesi hangus untuk
-/// mengarahkan user ke halaman login dari halaman manapun.
+/// Kunci navigator global — dipakai handler sesi hangus untuk menutup
+/// halaman yang sedang terbuka dari halaman mana pun.
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
@@ -34,40 +34,44 @@ class PosApp extends StatefulWidget {
 }
 
 class _PosAppState extends State<PosApp> {
-  /// `null` = masih memeriksa sesi tersimpan (tampilkan splash).
-  AuthUser? _user;
+  /// `true` = masih memulihkan sesi tersimpan (tampilkan splash).
+  bool _isRestoring = true;
 
   @override
   void initState() {
     super.initState();
+    // Pasang handler sebelum restore: validasi token di latar juga bisa 401.
+    ApiClient.instance.onUnauthorized = _handleUnauthorized;
     _restoreSession();
-
-    // Sesi hangus di tengah pemakaian (401): langsung ke halaman login
-    // agar user jelas harus login ulang, bukan hanya melihat pesan error.
-    ApiClient.instance.onUnauthorized = _handleSessionExpired;
   }
 
-  /// Coba pulihkan sesi dari penyimpanan lokal (auto-login).
+  /// Pulihkan sesi dari daftar akun tersimpan (auto-login).
   Future<void> _restoreSession() async {
     final user = await AuthService.instance.restoreSession();
     if (!mounted) return;
-    setState(() {
-      _user = user;
-      if (user != null) AppData.instance.setSession(user);
-    });
+    if (user != null) AppData.instance.setSession(user);
+    setState(() => _isRestoring = false);
   }
 
-  /// Sesi hangus (token invalid/kadaluarsa): bersihkan sesi lokal lalu
-  /// ganti seluruh tumpukan halaman dengan halaman login, disertai
-  /// keterangan alasannya.
-  Future<void> _handleSessionExpired() async {
-    await AppData.instance.clearSessionLocal();
-    if (!mounted) return;
+  /// Sesi hangus (token invalid/kadaluarsa).
+  ///
+  /// Bila ada akun lain tersimpan, pindah diam-diam dan jangan ganggu
+  /// user. Bila tidak ada, tutup semua halaman dan tampilkan login.
+  Future<bool> _handleUnauthorized() async {
+    final switched = await AuthService.instance.handleUnauthorized();
 
-    navigatorKey.currentState?.pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginPage()),
-      (route) => false,
-    );
+    if (switched) {
+      final active = await AccountStore.instance.readActive();
+      if (active != null) {
+        AppData.instance.switchAccount(active.user, active.token);
+      }
+      return true;
+    }
+
+    await AppData.instance.clearSessionLocal();
+    if (!mounted) return false;
+
+    navigatorKey.currentState?.popUntil((route) => route.isFirst);
 
     // Keterangan muncul di halaman login — tunggu frame berikutnya agar
     // Scaffold LoginPage sudah terpasang.
@@ -81,6 +85,8 @@ class _PosAppState extends State<PosApp> {
         ),
       );
     });
+
+    return false;
   }
 
   @override
@@ -92,7 +98,22 @@ class _PosAppState extends State<PosApp> {
       theme: buildLightTheme(),
       darkTheme: buildDarkTheme(),
       themeMode: ThemeMode.light,
-      home: _user == null ? const LoginPage() : const MainShell(),
+      // Reaktif terhadap ganti akun: login/logout/switch langsung
+      // mengganti layar tanpa navigasi manual.
+      home: ListenableBuilder(
+        listenable: AppData.instance,
+        builder: (context, _) {
+          if (_isRestoring) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          final user = AppData.instance.currentUser;
+          return user == null
+              ? const LoginPage()
+              : MainShell(key: ValueKey(user.id));
+        },
+      ),
     );
   }
 }

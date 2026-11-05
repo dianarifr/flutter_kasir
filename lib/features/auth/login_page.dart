@@ -6,10 +6,13 @@ import '../../core/network/api_exception.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/token_storage.dart';
 import '../../core/theme/app_colors.dart';
-import '../dashboard/main_shell.dart';
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+  const LoginPage({super.key, this.addAccount = false});
+
+  /// `true` = dibuka dari sheet "Tambah akun": sesi aktif tidak
+  /// ditimpa sampai login berhasil, lalu halaman ini ditutup.
+  final bool addAccount;
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -31,7 +34,7 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void initState() {
     super.initState();
-    _loadRememberedCredentials();
+    if (!widget.addAccount) _loadRememberedUsername();
     _loadAppVersion();
   }
 
@@ -50,18 +53,15 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  /// Prefill form dari kredensial "Ingat saya" yang tersimpan — tetap
-  /// terisi walau user baru saja logout (kredensial tidak ikut dibersihkan
-  /// saat sesi dihapus).
-  Future<void> _loadRememberedCredentials() async {
-    final creds = await TokenStorage.readCredentials();
+  /// Prefill username dari "Ingat saya". Password tidak pernah disimpan.
+  /// Pada mode tambah akun form sengaja kosong.
+  Future<void> _loadRememberedUsername() async {
+    final remembered = await TokenStorage.readRemembered();
     if (!mounted) return;
     setState(() {
-      _rememberMe = creds.remember;
-      final username = creds.username;
-      final password = creds.password;
+      _rememberMe = remembered.remember;
+      final username = remembered.username;
       if (username != null) _usernameController.text = username;
-      if (password != null) _passwordController.text = password;
     });
   }
 
@@ -88,10 +88,11 @@ class _LoginPageState extends State<LoginPage> {
       AppData.instance.setSession(user);
 
       if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const MainShell()),
-      );
+      if (widget.addAccount) {
+        // Kembali ke layar utama; ListenableBuilder sudah memakai akun
+        // baru karena AppData.setSession memicu rebuild.
+        Navigator.pop(context);
+      }
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -147,13 +148,15 @@ class _LoginPageState extends State<LoginPage> {
 
                       // Title
                       Text(
-                        'Nyemil Nyam',
+                        widget.addAccount ? 'Tambah Akun' : 'Nyemil Nyam',
                         style: theme.textTheme.headlineMedium,
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Masukkan akun untuk mulai bertransaksi',
+                        widget.addAccount
+                            ? 'Masuk ke akun lain tanpa keluar dari akun ini'
+                            : 'Masukkan akun untuk mulai bertransaksi',
                         style: theme.textTheme.bodySmall,
                         textAlign: TextAlign.center,
                       ),
@@ -254,7 +257,7 @@ class _LoginPageState extends State<LoginPage> {
                           Expanded(
                             child: Text(
                               _rememberMe
-                                  ? 'Auto-login saat dibuka lagi'
+                                  ? 'Simpan akun (auto-login & ganti cepat)'
                                   : 'Login ulang tiap buka app',
                               style: const TextStyle(
                                 fontSize: 11,

@@ -80,6 +80,26 @@ Route::post('/logout-all', function (Request $request) {
 
 Dipakai tombol "Keluar dari semua akun" di app.
 
+### 1.4 Wajib punya outlet (tambahan 5 Nov 2026) - [x] SELESAI
+
+Login ditolak `403` dengan pesan "Akun ini belum terhubung ke outlet.
+Hubungi admin." bila `outlet_id` user kosong. Alasannya: harga, stok, dan
+shift semuanya terikat outlet, sehingga app POS tidak berguna tanpa outlet.
+Test baru: `login_ditolak_jika_user_tidak_terhubung_ke_outlet`.
+
+### 1.5 Masa berlaku token (tambahan 5 Nov 2026) - [x] SELESAI
+
+`config/sanctum.php` sekarang memakai `SANCTUM_EXPIRATION` (menit) dengan
+default 30 hari. Token lama otomatis ditolak Guard setelah melewati batas.
+Test baru: `token_kedaluwarsa_setelah_masa_berlaku`.
+
+### 1.6 Pembersihan token legacy (tambahan 5 Nov 2026) - [x] SELESAI
+
+Perintah baru: `php artisan tokens:prune-legacy [--dry-run] [--force]`.
+Menghapus token yang namanya bukan `dev-*` (token lama yang dibuat sebelum
+app mengirim `device_id`). Di production, perintah minta konfirmasi kecuali
+`--force`.
+
 ### Uji backend
 1. Login user yang sama dari 2 device / 2 emulator.
 2. Pastikan keduanya bisa memanggil `GET /orders` bersamaan (tidak 401).
@@ -165,10 +185,10 @@ setelah update.
 Alasan: dengan sampai 5 akun, menyimpan 5 password plaintext di
 SharedPreferences terlalu berisiko.
 
-### 2.4 `pubspec.yaml` (opsional)
-Tidak wajib dependency baru: `device_id` cukup uuid sederhana dari timestamp +
-random. Kalau ingin nama device enak dibaca di server, tambahkan
-`device_info_plus`.
+### 2.4 `pubspec.yaml` (opsional) - [x] diputuskan tanpa dependency baru
+`device_id` memakai timestamp + random (`dev-...`). `device_name` yang
+dikirim ke server memakai `"Nyemil Nyam"` sebagai default. `device_info_plus`
+tidak ditambahkan.
 
 ---
 
@@ -306,39 +326,39 @@ Tidak diubah. Identitas + ikon logout tetap seperti sekarang.
 
 ---
 
-## Bagian 5 - Penyederhanaan warning stok
+## Bagian 5 - Penyederhanaan warning stok  [SELESAI - 5 Nov 2026]
 
-### 5.1 Katalog POS (`lib/features/pos/pos_catalog_page.dart`)
+### 5.1 Katalog POS (`lib/features/pos/pos_catalog_page.dart`) - [x] SELESAI
 
-- **Hapus** `_showStockWarningDialog()` (baris 52-126).
-- `_addProduct()` (baris 40-50) dipersempit menjadi:
+- [x] **Hapus** `_showStockWarningDialog()` (dulu baris 52-126).
+- [x] `_addProduct()` dipersempit menjadi:
 
 ```dart
 void _addProduct(String productId) => _data.addToCart(productId);
 ```
 
-- **Pertahankan** `_data.loadProductStock(withDetail: true)` di `initState`
-  (baris 33). Data ini yang dipakai kartu warning di halaman checkout; kalau
-  dihapus, warning checkout jadi kosong.
+- [x] **Pertahankan** `_data.loadProductStock(withDetail: true)` di `initState`.
+  Data ini yang dipakai kartu warning di halaman checkout; kalau dihapus,
+  warning checkout jadi kosong. Komentar di atasnya sudah disesuaikan agar
+  tidak lagi menyebut dialog.
 
-### 5.2 Checkout (`lib/features/pos/pos_checkout_page.dart`)
+### 5.2 Checkout (`lib/features/pos/pos_checkout_page.dart`) - [x] SELESAI
 
-**Tetap:**
-- `_cartIssues` getter (baris 203-216)
-- `_buildStockWarningCard()` (baris 720-764)
-- Pemakaian di `build()` baris 416-417
+**Tetap (tidak disentuh):**
+- `_cartIssues` getter
+- `_buildStockWarningCard()`
+- Pemakaiannya di `build()`
 
 **Dihapus:**
-- Pemanggilan `_showWarningsSheet(result.warnings)` di `_submit()` (baris 245-247)
-- Seluruh method `_showWarningsSheet()` (baris 283-352)
+- [x] Pemanggilan `_showWarningsSheet(result.warnings)` di `_submit()`
+- [x] Seluruh method `_showWarningsSheet()`
 
 Efek: setelah order tersimpan, langsung lanjut ke halaman pembayaran (Bayar
 Langsung) atau kembali ke dashboard (Simpan Pesanan), tanpa bottom sheet.
 
-**Penguatan (opsional tapi disarankan):** panggil
-`_data.loadProductStock(withDetail: true)` di `initState` checkout (dengan guard
-`if (!_data.isLoadingStock)`), supaya kartu warning tidak bergantung pada halaman
-katalog pernah dibuka.
+**Penguatan:** [x] `_data.loadProductStock(withDetail: true)` ikut dipanggil di
+`initState` checkout (guard `if (!_data.isLoadingStock)`), supaya kartu warning
+tidak bergantung pada halaman katalog pernah dibuka.
 
 ### 5.3 Yang tidak diubah
 
@@ -346,6 +366,16 @@ katalog pernah dibuka.
 - `CreateOrderResult.warnings` dan model `StockWarning` - tetap ada karena
   backend masih mengirim; hanya tidak ditampilkan lagi.
 - Halaman Sisa Stok, dashboard kartu stok kritis - tidak terkait.
+
+### 5.4 Verifikasi
+
+- [x] `flutter analyze` -> `No issues found!`
+- [x] `flutter test` -> 15 test lolos, termasuk 2 test baru di
+  `test/pos_stock_warning_test.dart`:
+  - tombol "Tambah" di katalog tidak memunculkan dialog, tapi produk tetap
+    masuk keranjang;
+  - kartu "Bahan kurang/habis" tetap tampil di checkout walau stok berdetail
+    belum dimuat sebelumnya.
 
 ---
 
@@ -368,10 +398,16 @@ Jalankan `flutter analyze` dan `flutter test` sebelum selesai.
 2. **Model + storage**: 2.1, 2.2, 2.3 -> migrasi jalan, belum ada perubahan UI.
 3. **Layanan**: 3.1, 3.2, 3.3 -> unit test.
 4. **UI ganti akun**: 4.1, 4.2, 4.3.
-5. **Warning stok**: 5.1, 5.2.
-6. **Test + analyze**.
+5. **Warning stok**: 5.1, 5.2. **[SELESAI 5 Nov 2026]**
+6. **Test + analyze**. (khusus Bagian 5 sudah dijalankan: analyze bersih, 15 test lolos)
 
 Estimasi: backend ~30 menit; Flutter ~4-5 jam; test ~1 jam.
+
+**Progres:** Bagian 1-6 selesai (5 Nov 2026). Backend juga menolak login
+(403) untuk user tanpa outlet — app POS tidak bisa dipakai tanpa outlet.
+Tambahan: masa berlaku token Sanctum 30 hari + perintah pembersih token
+legacy. Hasil verifikasi: `php artisan test` 39 test lolos; `flutter analyze`
+bersih; `flutter test` 27 test lolos. QA manual 2 device oleh user: lolos.
 
 ---
 
@@ -388,6 +424,7 @@ Estimasi: backend ~30 menit; Flutter ~4-5 jam; test ~1 jam.
    menjaga `_currentUser == null`; tambahkan cek `userId` agar respons akun lama
    tidak menimpa state akun baru.
 5. **Token Sanctum tanpa masa berlaku**: multi-device memperbesar risiko token
-   bocor. Disarankan set `expiration` di `config/sanctum.php`.
+   bocor. **[SELESAI]** `config/sanctum.php` memakai `SANCTUM_EXPIRATION`
+   (default 30 hari).
 6. **`/user-info` sebelum diperbaiki** mengembalikan user tanpa `outlet` ->
    jangan lompat langkah 1.2.

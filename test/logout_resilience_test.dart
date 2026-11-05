@@ -12,11 +12,39 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_kasir/core/data/app_data.dart';
 import 'package:flutter_kasir/core/data/models.dart';
 import 'package:flutter_kasir/core/network/api_client.dart';
+import 'package:flutter_kasir/core/services/account_store.dart';
 import 'package:flutter_kasir/core/services/token_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+/// Simpan satu akun tersimpan + jadikan aktif (meniru sesi login).
+Future<SavedAccount> _saveAccount({
+  int userId = 1,
+  String token = 'token-lama',
+  String name = 'Kasir',
+}) async {
+  final now = DateTime.now().millisecondsSinceEpoch;
+  final user = AuthUser(
+    id: userId,
+    name: name,
+    username: 'kasir',
+    email: 'kasir@kasir.com',
+    role: 'kasir',
+    outlet: const Outlet(id: 1, name: 'Outlet Pusat'),
+  );
+  final account = SavedAccount(
+    userId: userId,
+    token: token,
+    user: user,
+    addedAt: now,
+    lastUsedAt: now,
+  );
+  await AccountStore.instance.upsert(account);
+  await AccountStore.instance.setActive(userId);
+  return account;
+}
 
 void main() {
   setUp(() {
@@ -25,6 +53,7 @@ void main() {
     dotenv.testLoad(fileInput: 'API_BASE_URL=http://test.local/api\n');
     SharedPreferences.setMockInitialValues({});
     ApiClient.instance.setToken('token-lama');
+    ApiClient.instance.onUnauthorized = null;
   });
 
   test('logout tetap bersih walau server mati (SocketException)', () async {
@@ -35,24 +64,16 @@ void main() {
     );
 
     // Siapkan sesi seperti user yang sedang login.
-    AppData.instance.setSession(
-      const AuthUser(
-        id: 1,
-        name: 'Kasir',
-        email: 'kasir@kasir.com',
-        role: 'kasir',
-        outlet: null,
-      ),
-    );
-    await TokenStorage.saveToken('token-lama');
+    final account = await _saveAccount();
+    AppData.instance.setSession(account.user);
     expect(AppData.instance.currentUser, isNotNull);
 
     // Logout tidak boleh melempar exception walau API gagal total.
     await AppData.instance.logout();
 
     expect(AppData.instance.currentUser, isNull);
-    expect(await TokenStorage.readToken(), isNull);
-    expect(await TokenStorage.readUser(), isNull);
+    expect(await AccountStore.instance.readAccounts(), isEmpty);
+    expect(await AccountStore.instance.readActive(), isNull);
   });
 
   test('logout tetap bersih walau backend balas 401 (token hangus)', () async {
@@ -66,21 +87,13 @@ void main() {
       ),
     );
 
-    AppData.instance.setSession(
-      const AuthUser(
-        id: 1,
-        name: 'Kasir',
-        email: 'kasir@kasir.com',
-        role: 'kasir',
-        outlet: null,
-      ),
-    );
-    await TokenStorage.saveToken('token-lama');
+    final account = await _saveAccount();
+    AppData.instance.setSession(account.user);
 
     await AppData.instance.logout();
 
     expect(AppData.instance.currentUser, isNull);
-    expect(await TokenStorage.readToken(), isNull);
+    expect(await AccountStore.instance.readAccounts(), isEmpty);
   });
 
   test('logout sukses memanggil endpoint /logout', () async {
@@ -98,47 +111,27 @@ void main() {
     expect(called, isTrue);
   });
 
-  test(
-    'kredensial ingat-saya bertahan setelah logout (prefill login)',
-    () async {
-      // Simulasi login dengan "Ingat saya" tercentang.
-      await TokenStorage.saveCredentials(
-        username: 'kasir',
-        password: 'kasir123',
-        remember: true,
-      );
-      await TokenStorage.saveToken('token-aktif');
+  test('username ingat-saya bertahan setelah logout (prefill login)', () async {
+    await TokenStorage.saveRemembered(username: 'kasir', remember: true);
 
-      // Logout menghapus sesi...
-      await AppData.instance.logout();
+    // Logout (tanpa akun tersimpan) tetap boleh berjalan.
+    await AppData.instance.logout();
 
-      // ...tapi kredensial tetap ada untuk prefill form login.
-      expect(await TokenStorage.readToken(), isNull);
-      final creds = await TokenStorage.readCredentials();
-      expect(creds.username, 'kasir');
-      expect(creds.password, 'kasir123');
-      expect(creds.remember, isTrue);
-    },
-  );
+    // Username tetap ada untuk prefill; password tidak pernah disimpan.
+    final remembered = await TokenStorage.readRemembered();
+    expect(remembered.username, 'kasir');
+    expect(remembered.remember, isTrue);
+  });
 
-  test('kredensial dihapus bila user memilih tidak ingat saat login', () async {
+  test('username dihapus bila user memilih tidak ingat saat login', () async {
     // Login pertama dengan remember = true.
-    await TokenStorage.saveCredentials(
-      username: 'kasir',
-      password: 'kasir123',
-      remember: true,
-    );
+    await TokenStorage.saveRemembered(username: 'kasir', remember: true);
 
     // Login berikutnya dengan remember = false.
-    await TokenStorage.saveCredentials(
-      username: 'pandugo',
-      password: 'kasir123',
-      remember: false,
-    );
+    await TokenStorage.saveRemembered(username: 'pandugo', remember: false);
 
-    final creds = await TokenStorage.readCredentials();
-    expect(creds.username, isNull);
-    expect(creds.password, isNull);
-    expect(creds.remember, isFalse);
+    final remembered = await TokenStorage.readRemembered();
+    expect(remembered.username, isNull);
+    expect(remembered.remember, isFalse);
   });
 }

@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'models.dart';
 import '../network/api_exception.dart';
 import '../services/auth_service.dart';
+import '../services/account_store.dart';
 import '../services/charge_service.dart';
 import '../services/order_service.dart';
 import '../services/product_service.dart';
@@ -98,14 +99,22 @@ class AppData extends ChangeNotifier {
     _stockError = null;
     notifyListeners();
 
+    final userId = _currentUser?.id;
+
     try {
-      _productStocks = await StockService.instance.fetchProductStock(
+      final fetched = await StockService.instance.fetchProductStock(
         outlet.id,
         withDetail: withDetail,
       );
+      // Ganti akun bisa terjadi di tengah fetch: jangan isi state akun baru
+      // dengan stok outlet akun lama.
+      if (_currentUser?.id != userId) return;
+      _productStocks = fetched;
     } on ApiException catch (e) {
+      if (_currentUser?.id != userId) return;
       _stockError = e.message;
     } catch (_) {
+      if (_currentUser?.id != userId) return;
       _stockError = 'Tidak dapat terhubung ke server.';
     } finally {
       _isLoadingStock = false;
@@ -126,13 +135,19 @@ class AppData extends ChangeNotifier {
     _componentError = null;
     notifyListeners();
 
+    final userId = _currentUser?.id;
+
     try {
-      _componentStocks = await StockService.instance.fetchComponentStock(
+      final fetched = await StockService.instance.fetchComponentStock(
         outlet.id,
       );
+      if (_currentUser?.id != userId) return;
+      _componentStocks = fetched;
     } on ApiException catch (e) {
+      if (_currentUser?.id != userId) return;
       _componentError = e.message;
     } catch (_) {
+      if (_currentUser?.id != userId) return;
       _componentError = 'Tidak dapat terhubung ke server.';
     } finally {
       _isLoadingComponents = false;
@@ -149,33 +164,57 @@ class AppData extends ChangeNotifier {
     ]);
   }
 
-  /// Logout: hapus token di backend & bersihkan state sesi.
+  /// Logout perangkat ini: hapus token di backend, keluarkan akun aktif
+/// dari daftar, lalu otomatis pindah ke akun lain bila ada.
   ///
   /// Gagal request ke backend (server mati / token sudah hangus / 401)
-  /// TIDAK boleh menggagalkan logout — sesi lokal tetap dibersihkan
-  /// supaya app kembali ke halaman login.
+  /// TIDAK boleh menggagalkan logout — pembersihan lokal tetap jalan.
   Future<void> logout() async {
+    SavedAccount? next;
     try {
-      await AuthService.instance.logout();
+      next = await AuthService.instance.logout();
     } catch (_) {
-      // Abaikan error API; pembersihan lokal sudah dilakukan di
-      // AuthService.logout (finally).
+      // Abaikan error API; AuthService.logout sudah membersihkan token.
     }
-    await clearSessionLocal();
+
+    if (next != null) {
+      switchAccount(next.user, next.token);
+    } else {
+      await clearSessionLocal();
+    }
   }
 
-  /// Bersihkan sesi & seluruh data TANPA memanggil API logout backend.
-  ///
-  /// Dipakai saat sesi hangus di tengah pemakaian (401): token sudah
-  /// tidak valid sehingga request logout hanya akan 401 lagi.
-  Future<void> clearSessionLocal() async {
-    // Cache persisten milik outlet yang keluar ikut dibuang supaya akun
-    // lain di perangkat yang sama tidak mewarisi datanya.
+  /// Logout dari semua perangkat: cabut seluruh token user di backend,
+  /// hapus semua akun tersimpan, dan buang cache outlet.
+  Future<void> logoutAll() async {
     final outletId = _currentUser?.outlet?.id;
+    try {
+      await AuthService.instance.logoutAll();
+    } catch (_) {
+      // Tetap bersihkan lokal walau backend tidak terjangkau.
+    }
+
     if (outletId != null) {
       unawaited(LocalCache.instance.remove('charges_outlet_$outletId'));
       unawaited(LocalCache.instance.remove('products_outlet_$outletId'));
     }
+    await clearSessionLocal();
+  }
+
+  /// Ganti akun: terapkan token akun tujuan lalu reset state sesi.
+  ///
+  /// Cache persisten produk/charge sengaja TIDAK dihapus — cache di-key
+  /// per outlet sehingga aman dipakai bersama antar akun.
+  void switchAccount(AuthUser user, String token) {
+    AuthService.instance.applyToken(token);
+    setSession(user);
+  }
+
+  /// Bersihkan sesi & seluruh data TANPA memanggil API logout backend.
+  ///
+  /// Dipakai saat sesi hangus di tengah pemakaian (401) atau saat tidak
+  /// ada akun lain setelah logout.
+  Future<void> clearSessionLocal() async {
     await AuthService.instance.clearLocalSession();
     _currentUser = null;
     _productStocks = [];
@@ -282,6 +321,7 @@ class AppData extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    final userId = _currentUser?.id;
 
     _isLoadingProducts = true;
     _productsError = null;
@@ -289,15 +329,18 @@ class AppData extends ChangeNotifier {
 
     try {
       final fresh = await ProductService.instance.fetchProducts(outlet.id);
-      // Logout bisa terjadi di tengah fetch: jangan isi state/cache
-      // milik outlet yang barusan ditinggalkan.
-      if (_currentUser == null) return;
+      // Logout/ganti akun bisa terjadi di tengah fetch: jangan isi
+      // state/cache milik sesi yang barusan ditinggalkan.
+      if (_currentUser?.id != userId) return;
       _products = fresh;
       _productsFetchedAt = DateTime.now();
       _persistProducts(fresh);
     } on ApiException catch (e) {
+      // Jangan tampilkan error sesi lama di layar akun baru.
+      if (_currentUser?.id != userId) return;
       _productsError = e.message;
     } catch (_) {
+      if (_currentUser?.id != userId) return;
       _productsError = 'Tidak dapat terhubung ke server.';
     } finally {
       _isLoadingProducts = false;
@@ -311,12 +354,13 @@ class AppData extends ChangeNotifier {
   Future<void> _refreshProductsSilently() async {
     final outlet = currentOutlet;
     if (outlet == null) return;
+    final userId = _currentUser?.id;
     // Catat waktu percobaan sekarang juga supaya pembukaan halaman
     // beruntun tidak memicu beberapa fetch sekaligus.
     _productsFetchedAt = DateTime.now();
     try {
       final fresh = await ProductService.instance.fetchProducts(outlet.id);
-      if (_currentUser == null) return;
+      if (_currentUser?.id != userId) return;
       _products = fresh;
       _persistProducts(fresh);
       notifyListeners();
@@ -418,6 +462,7 @@ class AppData extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    final userId = _currentUser?.id;
 
     _isLoadingCharges = true;
     _chargesError = null;
@@ -425,15 +470,18 @@ class AppData extends ChangeNotifier {
 
     try {
       final fresh = await ChargeService.instance.fetchCharges();
-      // Logout bisa terjadi di tengah fetch: jangan isi state/cache
-      // milik outlet yang barusan ditinggalkan.
-      if (_currentUser == null) return;
+      // Logout/ganti akun bisa terjadi di tengah fetch: jangan isi
+      // state/cache milik sesi yang barusan ditinggalkan.
+      if (_currentUser?.id != userId) return;
       _charges = fresh;
       _chargesFetchedAt = DateTime.now();
       _persistCharges(fresh);
     } on ApiException catch (e) {
+      // Jangan tampilkan error sesi lama di layar akun baru.
+      if (_currentUser?.id != userId) return;
       _chargesError = e.message;
     } catch (_) {
+      if (_currentUser?.id != userId) return;
       _chargesError = 'Tidak dapat terhubung ke server.';
     } finally {
       _isLoadingCharges = false;
@@ -447,12 +495,13 @@ class AppData extends ChangeNotifier {
   Future<void> _refreshChargesSilently() async {
     final outlet = currentOutlet;
     if (outlet == null) return;
+    final userId = _currentUser?.id;
     // Catat waktu percobaan sekarang juga supaya pembukaan halaman
     // beruntun tidak memicu beberapa fetch sekaligus.
     _chargesFetchedAt = DateTime.now();
     try {
       final fresh = await ChargeService.instance.fetchCharges();
-      if (_currentUser == null) return;
+      if (_currentUser?.id != userId) return;
       _charges = fresh;
       _persistCharges(fresh);
       notifyListeners();
@@ -498,11 +547,17 @@ class AppData extends ChangeNotifier {
     _ordersError = null;
     notifyListeners();
 
+    final userId = _currentUser?.id;
+
     try {
-      _orders = await OrderService.instance.fetchOrders(outlet.id);
+      final fetched = await OrderService.instance.fetchOrders(outlet.id);
+      if (_currentUser?.id != userId) return;
+      _orders = fetched;
     } on ApiException catch (e) {
+      if (_currentUser?.id != userId) return;
       _ordersError = e.message;
     } catch (_) {
+      if (_currentUser?.id != userId) return;
       _ordersError = 'Tidak dapat terhubung ke server.';
     } finally {
       _isLoadingOrders = false;
@@ -546,11 +601,17 @@ class AppData extends ChangeNotifier {
     _customersError = null;
     notifyListeners();
 
+    final userId = _currentUser?.id;
+
     try {
-      _customers = await OrderService.instance.fetchCustomers(outlet.id);
+      final fetched = await OrderService.instance.fetchCustomers(outlet.id);
+      if (_currentUser?.id != userId) return;
+      _customers = fetched;
     } on ApiException catch (e) {
+      if (_currentUser?.id != userId) return;
       _customersError = e.message;
     } catch (_) {
+      if (_currentUser?.id != userId) return;
       _customersError = 'Tidak dapat terhubung ke server.';
     } finally {
       _isLoadingCustomers = false;
@@ -588,12 +649,18 @@ class AppData extends ChangeNotifier {
     _salesError = null;
     notifyListeners();
 
+    final userId = _currentUser?.id;
+
     try {
-      _salesHistory = await SalesHistoryService.instance.fetch(filter);
+      final history = await SalesHistoryService.instance.fetch(filter);
+      if (_currentUser?.id != userId) return;
+      _salesHistory = history;
       _salesFilter = filter;
     } on ApiException catch (e) {
+      if (_currentUser?.id != userId) return;
       _salesError = e.message;
     } catch (_) {
+      if (_currentUser?.id != userId) return;
       _salesError = 'Tidak dapat terhubung ke server.';
     } finally {
       _isLoadingSales = false;
@@ -626,11 +693,17 @@ class AppData extends ChangeNotifier {
     _productSalesError = null;
     notifyListeners();
 
+    final userId = _currentUser?.id;
+
     try {
-      _productSales = await SalesHistoryService.instance.fetchProducts(filter);
+      final fetched = await SalesHistoryService.instance.fetchProducts(filter);
+      if (_currentUser?.id != userId) return;
+      _productSales = fetched;
     } on ApiException catch (e) {
+      if (_currentUser?.id != userId) return;
       _productSalesError = e.message;
     } catch (_) {
+      if (_currentUser?.id != userId) return;
       _productSalesError = 'Tidak dapat terhubung ke server.';
     } finally {
       _isLoadingProductSales = false;
@@ -660,11 +733,16 @@ class AppData extends ChangeNotifier {
     _isLoadingShift = true;
     notifyListeners();
 
+    final userId = _currentUser?.id;
+
     try {
-      _currentShift = await ShiftService.instance.fetchCurrent();
+      final shift = await ShiftService.instance.fetchCurrent();
+      if (_currentUser?.id != userId) return;
+      _currentShift = shift;
     } catch (_) {
       // Gagal memuat (server mati dll): dianggap belum ada shift agar
       // kasir tetap diarahkan ke "Buka Shift"; bisa dicoba lagi.
+      if (_currentUser?.id != userId) return;
       _currentShift = null;
     } finally {
       _isLoadingShift = false;
