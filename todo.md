@@ -1,7 +1,7 @@
-# Todo: Multi-Device, Multi-Akun (ala Instagram), dan Penyederhanaan Warning Stok
+# Todo: Print Struk Bluetooth (Printer EPPOS)
 
-Repo app: `/var/www/html/php8/flutter_kasir`
-Repo backend: `/var/www/html/php8/kasir-app`
+Tanggal rencana: 5 Nov 2026. Hanya repo app (`flutter_kasir`); **backend tidak
+diubah**.
 
 ---
 
@@ -9,422 +9,186 @@ Repo backend: `/var/www/html/php8/kasir-app`
 
 | Topik | Keputusan |
 |---|---|
-| Satu akun di banyak device | **Diizinkan** (token per device, tidak saling menghapus) |
-| Quick switch akun | **Token saja**, tanpa menyimpan password |
-| Lokasi UI ganti akun | **AppBar kanan atas** (nama akun) -> bottom sheet |
-| Drawer | **Tidak diubah** |
-| Maks akun tersimpan | **5 akun** |
-| Warning stok saat Tambah di katalog | **Dihapus** |
-| Warning stok di halaman checkout | **Tetap** |
-| Warning stok setelah Bayar Langsung / Simpan Pesanan | **Dihapus keduanya** |
+| Printer | EPPOS 58mm, ESC/POS, Bluetooth Classic (SPP) |
+| Pairing | Pair dulu di Pengaturan Bluetooth Android (PIN `0000`/`1234`); app hanya menampilkan perangkat yang sudah ter-pair |
+| Package | `print_bluetooth_thermal ^1.2.5` + `esc_pos_utils_plus ^2.0.4` |
+| Penyimpanan | MAC printer, nama printer, ukuran kertas, toggle auto-print di `SharedPreferences` |
+| Ukuran kertas | Default 58mm, opsi 80mm (perlu konfirmasi) |
+| Auto print | Default mati, bisa dinyalakan di pengaturan (perlu konfirmasi) |
+| Entri pengaturan | Drawer "Printer Bluetooth" |
+| Isi struk | Sama dengan struk di layar; alamat outlet + nama kasir opsional (perlu konfirmasi) |
+
+Catatan: resolusi dependency sudah dicek lewat `flutter pub add --dry-run` di
+project ini (Flutter 3.47.6 / Dart 3.13.5) dan berhasil.
 
 ---
 
-## Bagian 1 - Backend `kasir-app`
+## 1. Dependency & konfigurasi platform
 
-### 1.1 `app/Http/Controllers/Api/AuthController.php`
+- [ ] `pubspec.yaml`: tambah `print_bluetooth_thermal: ^1.2.5` dan
+      `esc_pos_utils_plus: ^2.0.4`.
+- [ ] `android/app/src/main/AndroidManifest.xml`: tambah
+      `BLUETOOTH_CONNECT`, `BLUETOOTH` + `BLUETOOTH_ADMIN` dengan
+      `maxSdkVersion="30"`, dan
+      `<uses-feature android:name="android.hardware.bluetooth" android:required="false"/>`.
+      Izin runtime Android 12+ sudah diminta oleh plugin lewat
+      `isPermissionBluetoothGranted`.
+- [ ] `ios/Runner/Info.plist`: tambah `NSBluetoothAlwaysUsageDescription` dan
+      `NSBluetoothPeripheralUsageDescription` (untuk build iOS nanti).
+- [ ] Jalankan `flutter pub get`.
 
-Masalah sekarang (baris 44-48):
+## 2. `lib/core/services/printer_service.dart` (baru)
 
-```php
-// Hapus token lama biar gak numpuk (optional)
-$user->tokens()->delete();
-$token = $user->createToken($request->device_name)->plainTextToken;
-```
-
-`tokens()->delete()` menghapus **semua** token milik user. Device A langsung 401
-begitu device B login. Inilah penyebab "salah satu device ke-logout".
-
-Perbaikan:
-
-```php
-// Validator: tambah device_id
-'device_id' => 'nullable|string|max:100',
-
-// Ganti penghapusan global jadi per-device
-$deviceKey = $request->device_id ?: $request->device_name;
-$user->tokens()->where('name', $deviceKey)->delete();
-$token = $user->createToken($deviceKey)->plainTextToken;
-```
-
-Efek:
-- Device A dan B bisa aktif bersamaan.
-- Re-login di device yang sama mengganti token device itu saja (tidak menumpuk).
-- `device_name` tetap dipakai sebagai fallback bila app lama belum mengirim `device_id`.
-
-### 1.2 `routes/api.php` - `/user-info` harus menyertakan outlet
-
-Sekarang:
-
-```php
-Route::get('/user-info', function (Request $request) {
-    return $request->user();
-});
-```
-
-Tanpa `outlet`, validasi token saat ganti akun akan mengembalikan user dengan
-`outlet = null` -> app menampilkan "Tanpa Outlet" dan gerbang shift terlewat.
-
-```php
-Route::get('/user-info', fn (Request $request) => $request->user()->load('outlet'));
-```
-
-### 1.3 Opsional - `POST /logout-all`
-
-```php
-Route::post('/logout-all', function (Request $request) {
-    $request->user()->tokens()->delete();
-    return response()->json(['message' => 'Logout dari semua perangkat berhasil.']);
-});
-```
-
-Dipakai tombol "Keluar dari semua akun" di app.
-
-### 1.4 Wajib punya outlet (tambahan 5 Nov 2026) - [x] SELESAI
-
-Login ditolak `403` dengan pesan "Akun ini belum terhubung ke outlet.
-Hubungi admin." bila `outlet_id` user kosong. Alasannya: harga, stok, dan
-shift semuanya terikat outlet, sehingga app POS tidak berguna tanpa outlet.
-Test baru: `login_ditolak_jika_user_tidak_terhubung_ke_outlet`.
-
-### 1.5 Masa berlaku token (tambahan 5 Nov 2026) - [x] SELESAI
-
-`config/sanctum.php` sekarang memakai `SANCTUM_EXPIRATION` (menit) dengan
-default 30 hari. Token lama otomatis ditolak Guard setelah melewati batas.
-Test baru: `token_kedaluwarsa_setelah_masa_berlaku`.
-
-### 1.6 Pembersihan token legacy (tambahan 5 Nov 2026) - [x] SELESAI
-
-Perintah baru: `php artisan tokens:prune-legacy [--dry-run] [--force]`.
-Menghapus token yang namanya bukan `dev-*` (token lama yang dibuat sebelum
-app mengirim `device_id`). Di production, perintah minta konfirmasi kecuali
-`--force`.
-
-### Uji backend
-1. Login user yang sama dari 2 device / 2 emulator.
-2. Pastikan keduanya bisa memanggil `GET /orders` bersamaan (tidak 401).
-3. Login ulang di device A -> token A lama mati, token B tetap hidup.
-
----
-
-## Bagian 2 - Flutter: fondasi data
-
-### 2.1 `lib/core/data/models.dart`
-Tambah `toJson()` untuk `Outlet` dan `AuthUser` (belum ada; `toJson()` di
-baris 73 milik `Product`).
+Singleton `ChangeNotifier` + abstraksi transport agar bisa dites tanpa
+Bluetooth asli:
 
 ```dart
-Map<String, dynamic> toJson() => {
-  'id': id,
-  'name': name,
-  'address': address,
-}; // Outlet
+class PrinterDevice {
+  final String name;
+  final String mac;
+}
 
-Map<String, dynamic> toJson() => {
-  'id': id,
-  'name': name,
-  'username': username,
-  'email': email,
-  'role': role,
-  'outlet': outlet?.toJson(),
-}; // AuthUser
-```
-
-### 2.2 File baru `lib/core/services/account_store.dart`
-
-Menggantikan peran `TokenStorage` untuk data sesi.
-
-Key di `SharedPreferences`:
-
-| Key | Isi |
-|---|---|
-| `saved_accounts` | JSON list, maks 5 entri |
-| `active_account_id` | `int?` userId yang aktif |
-| `device_id` | uuid stabil, dibuat sekali |
-
-Bentuk entri:
-
-```json
-{
-  "userId": 12,
-  "token": "1|abc...",
-  "user": { "id": 12, "name": "...", "username": "...", "outlet": {...} },
-  "addedAt": 1730000000000,
-  "lastUsedAt": 1730000000000
+abstract class PrinterTransport {
+  Future<bool> isBluetoothEnabled();
+  Future<bool> ensurePermission();          // request izin Android 12+
+  Future<List<PrinterDevice>> pairedDevices();
+  Future<bool> connect(String mac);
+  Future<bool> isConnected();
+  Future<bool> write(List<int> bytes);
+  Future<void> disconnect();
 }
 ```
 
-API:
+Implementasi default `BluetoothPrinterTransport` membungkus
+`PrintBluetoothThermal`.
+
+API `PrinterService`:
 
 ```dart
-Future<List<SavedAccount>> readAccounts();
-Future<SavedAccount?> readActive();
-Future<void> upsert(SavedAccount account);   // dedupe by userId, terbaru di atas
-Future<void> remove(int userId);
-Future<void> setActive(int? userId);
-Future<void> clearAll();
-Future<String> deviceId();                    // buat + simpan bila belum ada
-Future<void> migrateLegacy();                 // sekali, dipanggil di main()
+Future<void> ensureLoaded();
+Future<List<PrinterDevice>> discover();
+Future<void> saveDevice(PrinterDevice device);
+Future<void> forget();
+Future<void> setPaperMm(int mm);
+Future<void> setAutoPrint(bool value);
+Future<void> connect();
+Future<void> disconnect();
+Future<void> printOrder(Order order, {String outletName, String outletAddress});
+Future<void> printTest();
 ```
 
-`upsert()`: buang entri dengan `userId` sama, sisip di posisi 0, kalau panjang
-> 5 buang entri dengan `lastUsedAt` paling lama.
+- [ ] Key `SharedPreferences`: `printer_mac`, `printer_name`, `printer_paper_mm`
+      (default 58), `printer_auto_print` (default `false`).
+- [ ] `printOrder()`: kalau belum tersambung -> auto-connect MAC tersimpan.
+- [ ] Kalau `write` gagal -> disconnect, connect ulang, kirim sekali lagi
+      (retry satu kali).
+- [ ] Serialisasi print dengan flag `_isPrinting` supaya dua struk tidak
+      bertabrakan.
+- [ ] Pesan error ramah: Bluetooth mati, izin ditolak, printer belum diatur,
+      printer tidak ditemukan, gagal mengirim data.
+- [ ] `printTest()` memakai struk contoh 1 item.
 
-`migrateLegacy()`: bila `auth_token` + `auth_user` lama masih ada -> jadikan
-entri pertama -> hapus key lama. User yang sudah login **tidak** ter-logout
-setelah update.
+## 3. `lib/core/services/receipt_escpos.dart` (baru)
 
-### 2.3 `lib/core/services/token_storage.dart`
-- **Hapus** penyimpanan password (`_rememberedPasswordKey`, `saveCredentials`,
-  `readCredentials`).
-- Sisakan `remembered_username` + `remember_me` untuk prefill username di form
-  login.
-- Key `auth_token` / `auth_user` menjadi legacy - dibaca sekali oleh
-  `migrateLegacy()`, lalu dihapus.
+Builder struk murni (tanpa akses platform) supaya mudah diuji.
 
-Alasan: dengan sampai 5 akun, menyimpan 5 password plaintext di
-SharedPreferences terlalu berisiko.
+- [ ] `Future<List<int>> build(Order order, {required String outletName,
+      String outletAddress, required int paperMm})`.
+- [ ] Layout 58mm = 32 karakter, 80mm = 48 karakter.
+- [ ] Header: nama toko (bold, double size, center), nama + alamat outlet.
+- [ ] Info: No. Struk, Tanggal, Pelanggan, Antrian.
+- [ ] Item: `qty x nama` + subtotal rata kanan; teks panjang di-wrap; catatan
+      item ikut dicetak.
+- [ ] Biaya: Subtotal, charge dinamis (persen/nominal) atau fallback
+      Diskon/Biaya Tambahan, lalu TOTAL (bold).
+- [ ] Status: `LUNAS` / `BELUM DIBAYAR` / `DIBATALKAN`.
+- [ ] Pembayaran: Metode; Tunai diterima + Kembalian; atau Tunai + Non Tunai
+      untuk pembayaran campuran.
+- [ ] Footer "Terima kasih telah berbelanja", `feed(3)`, `cut()`.
+- [ ] Pakai `CapabilityProfile.load()` + `Generator(PaperSize.mm58/mm80,
+      profile)`; code table `CP1252` agar karakter non-ASCII aman.
 
-### 2.4 `pubspec.yaml` (opsional) - [x] diputuskan tanpa dependency baru
-`device_id` memakai timestamp + random (`dev-...`). `device_name` yang
-dikirim ke server memakai `"Nyemil Nyam"` sebagai default. `device_info_plus`
-tidak ditambahkan.
+## 4. `lib/features/settings/printer_settings_page.dart` (baru)
 
----
+- [ ] Kartu status: tersambung/terputus + nama & MAC printer.
+- [ ] Tombol "Pilih Printer" -> bottom sheet daftar perangkat ter-pair
+      (nama + MAC), tap untuk simpan + connect.
+- [ ] Tombol "Hubungkan" / "Putuskan".
+- [ ] Pilihan ukuran kertas 58mm / 80mm.
+- [ ] Switch "Cetak otomatis setelah pembayaran".
+- [ ] Tombol "Cetak Tes".
+- [ ] Tombol "Lupakan printer".
+- [ ] Kartu panduan pairing: nyalakan printer -> Pengaturan Bluetooth ->
+      pair (`0000`/`1234`) -> kembali ke app.
+- [ ] Empty state kalau belum ada perangkat ter-pair + tombol refresh.
+- [ ] Semua error ditampilkan lewat `SnackBar` (bukan dialog generik).
 
-## Bagian 3 - Flutter: layanan sesi
+## 5. Integrasi UI
 
-### 3.1 `lib/core/services/auth_service.dart`
+- [ ] `lib/features/receipt/receipt_page.dart`: jadikan `StatefulWidget`.
+  - [ ] Ganti snackbar demo "Struk dikirim ke printer (demo)" dengan print
+        sungguhan + loading state.
+  - [ ] Kalau printer belum diatur -> dialog dengan tombol "Atur Printer".
+  - [ ] SnackBar sukses "Struk berhasil dicetak"; gagal -> pesan + aksi
+        "Pengaturan".
+  - [ ] Icon printer di AppBar untuk membuka pengaturan.
+  - [ ] Kirim `outletName` + `outletAddress` dari `AppData.currentOutlet`.
+- [ ] `lib/features/dashboard/main_shell.dart`: tambah menu drawer
+      "Printer Bluetooth" yang push ke `PrinterSettingsPage`.
+- [ ] `lib/features/pos/pos_payment_page.dart`: dukung auto-print setelah
+      pembayaran (kalau toggle aktif), tanpa menghalangi navigasi ke struk.
+- [ ] Cetak ulang dari `order_list_page.dart` otomatis ikut berfungsi karena
+      memakai `ReceiptPage` yang sama.
 
-| Method | Perilaku baru |
+## 6. Test
+
+| File | Isi |
 |---|---|
-| `login()` | kirim `device_name` + `device_id`; `AccountStore.upsert()`; `setActive`; `setToken()` |
-| `switchAccount(int userId)` | ambil token akun -> `setToken` -> `GET /user-info`. Sukses: perbarui data user tersimpan. 401: hapus akun itu, kembalikan error. Gagal jaringan: lanjut pakai data cache (mode offline) |
-| `logout()` | `POST /logout` (revoke token aktif saja) -> hapus akun aktif dari store -> **auto-switch ke akun lain** bila ada -> kalau kosong, ke halaman login |
-| `logoutAll()` | revoke token aktif + `AccountStore.clearAll()` |
-| `restoreSession()` | `migrateLegacy()` -> baca akun aktif -> `setToken` -> validasi `/user-info` di latar |
-| `handleUnauthorized()` | hapus **hanya** akun aktif; kalau ada akun lain -> switch diam-diam (`true`), kalau kosong -> `false` |
+| `test/printer_receipt_test.dart` (baru) | isi struk, format Rupiah, wrap 58 vs 80mm, status pesanan, diskon/charge |
+| `test/printer_service_test.dart` (baru) | simpan/pilih printer, retry sekali saat gagal, error kalau belum diatur, auto-print setting |
 
-Perilaku `remember = false`: jangan simpan ke daftar akun; token hanya di memori
-(seperti sekarang).
+- [ ] `flutter analyze` bersih.
+- [ ] `flutter test` semua lolos.
 
-### 3.2 `lib/core/network/api_client.dart`
+## 7. Verifikasi manual (dengan printer EPPOS)
 
-`onUnauthorized` menjadi `Future<bool> Function()?`:
+1. [ ] Pair printer di Pengaturan Bluetooth Android.
+2. [ ] Buka app -> drawer -> Printer Bluetooth -> Pilih Printer -> Hubungkan.
+3. [ ] Cetak Tes: teks, bold, rata kanan, dan potong kertas benar.
+4. [ ] Bayar order tunai -> Cetak Struk: nominal, kembalian, total sesuai.
+5. [ ] Cetak order non-tunai dan campuran.
+6. [ ] Cetak struk dari Daftar Pesanan (termasuk yang belum dibayar).
+7. [ ] Matikan printer saat cetak -> muncul pesan error yang jelas, app tidak
+       crash.
+8. [ ] `./scripts/build-apk.sh` berhasil (memastikan plugin Bluetooth lolos
+       build release AGP 9).
 
-```dart
-// true  = sudah ditangani (pindah ke akun lain), jangan ke login
-// false = tidak ada akun lain, app harus ke halaman login
-final handled = await onUnauthorized?.call() ?? false;
-```
+## 8. Risiko & catatan
 
-Kunci pengunci `_isNotifyingUnauthorized` tetap dipakai agar banyak 401 paralel
-hanya memicu satu penanganan.
+1. **Build AGP 9 / Gradle 9.3**: `print_bluetooth_thermal` 1.2.5 sudah
+   mendukung AGP 9, dan Flutter otomatis meng-apply KGP karena project memakai
+   `android.builtInKotlin=false`. Kalau build tetap gagal, fallback: buat bridge
+   Bluetooth SPP sendiri di `MainActivity.kt` (MethodChannel, ±120 baris) tanpa
+   plugin native.
+2. **`writeBytes` plugin berjalan di main thread** — struk kecil (±5-10 KB)
+   aman, tapi tetap beri loading state di UI.
+3. **`connectionStatus` plugin menulis satu spasi ke printer** — jangan dipanggil
+   berulang tanpa perlu.
+4. **Printer murah bisa kehilangan data** kalau dikirim terlalu cepat; plugin
+   sudah menulis per chunk 16 KB + flush.
+5. **Hanya perangkat ter-pair** yang tampil; scan perangkat baru dari dalam app
+   belum termasuk (butuh izin tambahan).
+6. **iOS/desktop belum diuji** — target utama Android.
 
-### 3.3 `lib/core/data/app_data.dart`
+## 9. Perlu dikonfirmasi user
 
-- `clearSessionLocal()` **jangan** hapus cache `products_outlet_$id` /
-  `charges_outlet_$id` selama masih ada akun tersimpan dengan outlet yang sama.
-  Cache memang di-key per outlet sehingga aman dipakai bersama. Hapus hanya saat
-  `logoutAll`.
-- Tambah `switchAccount(AuthUser user, String token)` -> `setSession(user)`
-  (sudah membersihkan cart, order, shift, riwayat) tanpa menyentuh cache.
-- `setSession()` sudah cukup untuk reset state; tidak perlu perubahan lain.
+1. Ukuran kertas: **58mm** atau **80mm**? (rencana: default 58mm + opsi 80mm)
+2. Cetak otomatis setelah pembayaran: default **mati** + toggle, atau langsung
+   otomatis?
+3. Isi struk: sama persis dengan layar, atau tambah **alamat outlet + nama
+   kasir**?
+4. Menu pengaturan printer: **drawer** (rencana) atau icon di AppBar saja?
 
-### 3.4 `lib/main.dart`
+## 10. Estimasi
 
-- `home:` dibungkus `ListenableBuilder(listenable: AppData.instance)` supaya
-  ganti akun langsung mengganti layar tanpa navigasi manual.
-- `restoreSession()` dipanggil setelah `AccountStore.migrateLegacy()`.
-- `onUnauthorized` diarahkan ke `AuthService.handleUnauthorized()`; bila `false`
-  baru jalankan alur lama (bersihkan sesi + `pushAndRemoveUntil` ke `LoginPage`).
-
----
-
-## Bagian 4 - Flutter: UI ganti akun
-
-### 4.1 AppBar `lib/features/dashboard/main_shell.dart`
-
-Ganti `Chip` outlet (baris 90-96) dengan nama akun:
-
-```dart
-InkWell(
-  onTap: () => showAccountSwitcherSheet(context),
-  borderRadius: BorderRadius.circular(999),
-  child: Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const CircleAvatar(
-          radius: 14,
-          backgroundColor: AppColors.surfaceAlt,
-          child: Icon(Icons.person_outline, size: 16),
-        ),
-        const SizedBox(width: 8),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 120),
-          child: Text(
-            identity, // username, fallback name -> email
-            overflow: TextOverflow.ellipsis,
-            maxLines: 1,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-          ),
-        ),
-        const SizedBox(width: 4),
-        const Icon(Icons.unfold_more, size: 16, color: AppColors.inkMuted),
-      ],
-    ),
-  ),
-),
-```
-
-- `maxWidth: 120` + ellipsis -> aman di layar 5,5 inci, tidak overflow meski
-  judul halaman panjang.
-- `identity` sudah dihitung di baris 77-78, tinggal dipakai.
-- Info outlet hilang dari AppBar; tetap terlihat di drawer dan di sheet.
-
-### 4.2 File baru `lib/features/auth/account_switcher_sheet.dart`
-
-```
-Ganti Akun
------------------------------
- (v) (B) Budi Santoso      Kasir
-         Outlet Pusat
-     (A) Sari              Kasir
-         Outlet Cabang
-     (C) Andi              Admin
-         Tanpa Outlet
------------------------------
- +  Tambah akun
- x  Keluar dari semua akun   (merah)
-```
-
-- Baris aktif: `Icons.check` + background `AppColors.surfaceAlt`.
-- Tap akun lain -> kalau shift masih terbuka, dialog konfirmasi *"Shift [nama]
-  masih terbuka. Tetap ganti akun?"* -> `switchAccount()`.
-- "Keluar dari akun ini" **tidak** ada di sheet (sudah ada di drawer).
-- "Tambah akun" -> `LoginPage` mode tambah akun (form kosong, tidak menimpa
-  sesi sampai login sukses).
-- "Keluar dari semua akun" -> dialog konfirmasi -> `logoutAll()`.
-
-### 4.3 `MainShell` diberi key per user
-
-Di `main.dart`:
-
-```dart
-home: _user == null
-    ? const LoginPage()
-    : MainShell(key: ValueKey(AppData.instance.currentUser?.id)),
-```
-
-Supaya `_selectedIndex` dan modal buka-shift ter-reset saat pindah akun, bukan
-mewarisi state akun sebelumnya.
-
-### 4.4 Drawer
-Tidak diubah. Identitas + ikon logout tetap seperti sekarang.
-
----
-
-## Bagian 5 - Penyederhanaan warning stok  [SELESAI - 5 Nov 2026]
-
-### 5.1 Katalog POS (`lib/features/pos/pos_catalog_page.dart`) - [x] SELESAI
-
-- [x] **Hapus** `_showStockWarningDialog()` (dulu baris 52-126).
-- [x] `_addProduct()` dipersempit menjadi:
-
-```dart
-void _addProduct(String productId) => _data.addToCart(productId);
-```
-
-- [x] **Pertahankan** `_data.loadProductStock(withDetail: true)` di `initState`.
-  Data ini yang dipakai kartu warning di halaman checkout; kalau dihapus,
-  warning checkout jadi kosong. Komentar di atasnya sudah disesuaikan agar
-  tidak lagi menyebut dialog.
-
-### 5.2 Checkout (`lib/features/pos/pos_checkout_page.dart`) - [x] SELESAI
-
-**Tetap (tidak disentuh):**
-- `_cartIssues` getter
-- `_buildStockWarningCard()`
-- Pemakaiannya di `build()`
-
-**Dihapus:**
-- [x] Pemanggilan `_showWarningsSheet(result.warnings)` di `_submit()`
-- [x] Seluruh method `_showWarningsSheet()`
-
-Efek: setelah order tersimpan, langsung lanjut ke halaman pembayaran (Bayar
-Langsung) atau kembali ke dashboard (Simpan Pesanan), tanpa bottom sheet.
-
-**Penguatan:** [x] `_data.loadProductStock(withDetail: true)` ikut dipanggil di
-`initState` checkout (guard `if (!_data.isLoadingStock)`), supaya kartu warning
-tidak bergantung pada halaman katalog pernah dibuka.
-
-### 5.3 Yang tidak diubah
-
-- `AppData.stockIssuesFor()` - masih dipakai kartu checkout.
-- `CreateOrderResult.warnings` dan model `StockWarning` - tetap ada karena
-  backend masih mengirim; hanya tidak ditampilkan lagi.
-- Halaman Sisa Stok, dashboard kartu stok kritis - tidak terkait.
-
-### 5.4 Verifikasi
-
-- [x] `flutter analyze` -> `No issues found!`
-- [x] `flutter test` -> 15 test lolos, termasuk 2 test baru di
-  `test/pos_stock_warning_test.dart`:
-  - tombol "Tambah" di katalog tidak memunculkan dialog, tapi produk tetap
-    masuk keranjang;
-  - kartu "Bahan kurang/habis" tetap tampil di checkout walau stok berdetail
-    belum dimuat sebelumnya.
-
----
-
-## Bagian 6 - Test
-
-| File | Perubahan |
-|---|---|
-| `test/logout_resilience_test.dart` | Ganti `TokenStorage.saveToken` -> `AccountStore`; sesuaikan ekspektasi kredensial (tanpa password) |
-| `test/account_store_test.dart` (baru) | upsert, dedupe by userId, batas 5 + buang `lastUsedAt` terlama, migrasi legacy |
-| `test/switch_account_test.dart` (baru) | logout -> auto-switch; 401 -> hanya akun aktif terhapus; token hangus saat switch; `remember=false` tidak tersimpan |
-| `test/pos_stock_warning_test.dart` (baru) | tambah produk tidak memunculkan dialog; kartu checkout tetap ada; submit order tanpa bottom sheet |
-
-Jalankan `flutter analyze` dan `flutter test` sebelum selesai.
-
----
-
-## Bagian 7 - Urutan kerja
-
-1. **Backend**: 1.1 + 1.2 -> uji dengan 2 emulator.
-2. **Model + storage**: 2.1, 2.2, 2.3 -> migrasi jalan, belum ada perubahan UI.
-3. **Layanan**: 3.1, 3.2, 3.3 -> unit test.
-4. **UI ganti akun**: 4.1, 4.2, 4.3.
-5. **Warning stok**: 5.1, 5.2. **[SELESAI 5 Nov 2026]**
-6. **Test + analyze**. (khusus Bagian 5 sudah dijalankan: analyze bersih, 15 test lolos)
-
-Estimasi: backend ~30 menit; Flutter ~4-5 jam; test ~1 jam.
-
-**Progres:** Bagian 1-6 selesai (5 Nov 2026). Backend juga menolak login
-(403) untuk user tanpa outlet — app POS tidak bisa dipakai tanpa outlet.
-Tambahan: masa berlaku token Sanctum 30 hari + perintah pembersih token
-legacy. Hasil verifikasi: `php artisan test` 39 test lolos; `flutter analyze`
-bersih; `flutter test` 27 test lolos. QA manual 2 device oleh user: lolos.
-
----
-
-## Bagian 8 - Risiko & catatan
-
-1. **Shift masih terbuka** saat ganti akun: shift bersifat per user
-   (`ShiftController.php:72,92`). Akun tujuan akan diminta buka shift. Sudah
-   ditangani dialog konfirmasi.
-2. **Token hangus di akun tersimpan**: user harus mengetik password lagi untuk
-   akun itu (konsekuensi pilihan "token saja"). UI menampilkan pesan jelas,
-   bukan error generik.
-3. **Akun ke-6**: entri paling lama dibuang otomatis; beri info singkat di sheet.
-4. **Request berjalan saat ganti akun**: `_fetchProducts` / `_fetchCharges` sudah
-   menjaga `_currentUser == null`; tambahkan cek `userId` agar respons akun lama
-   tidak menimpa state akun baru.
-5. **Token Sanctum tanpa masa berlaku**: multi-device memperbesar risiko token
-   bocor. **[SELESAI]** `config/sanctum.php` memakai `SANCTUM_EXPIRATION`
-   (default 30 hari).
-6. **`/user-info` sebelum diperbaiki** mengembalikan user tanpa `outlet` ->
-   jangan lompat langkah 1.2.
+±3-4 jam termasuk test, build APK, dan QA dengan printer fisik.

@@ -1,7 +1,8 @@
 // Helper format angka & tanggal (tanpa dependency intl).
 
-/// Format Rupiah dengan pemisah ribuan, contoh: 1250000 -> "Rp 1.250.000".
-String formatRupiah(int amount) {
+/// Format angka dengan pemisah ribuan tanpa prefiks mata uang,
+/// contoh: 83000 -> "83.000" (dipakai untuk teks share WhatsApp).
+String formatAngka(int amount) {
   final s = amount.abs().toString();
   final buffer = StringBuffer();
   for (var i = 0; i < s.length; i++) {
@@ -9,18 +10,39 @@ String formatRupiah(int amount) {
     final remaining = s.length - i - 1;
     if (remaining > 0 && remaining % 3 == 0) buffer.write('.');
   }
-  return '${amount < 0 ? '-Rp ' : 'Rp '}$buffer';
+  return '${amount < 0 ? '-' : ''}$buffer';
+}
+
+/// Format Rupiah dengan pemisah ribuan, contoh: 1250000 -> "Rp 1.250.000".
+String formatRupiah(int amount) {
+  return '${amount < 0 ? '-Rp ' : 'Rp '}${formatAngka(amount.abs())}';
 }
 
 // ---- Format tanggal (tanpa dependency intl) ----
 
 const List<String> _bulanSingkat = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
-  'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des',
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'Mei',
+  'Jun',
+  'Jul',
+  'Agu',
+  'Sep',
+  'Okt',
+  'Nov',
+  'Des',
 ];
 
 const List<String> _hariSingkat = [
-  'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min',
+  'Sen',
+  'Sel',
+  'Rab',
+  'Kam',
+  'Jum',
+  'Sab',
+  'Min',
 ];
 
 String _pad2(int n) => n.toString().padLeft(2, '0');
@@ -38,6 +60,10 @@ String formatMonthYear(DateTime date) {
 
 /// Format jam singkat, contoh: "09:15".
 String formatTime(DateTime d) => '${_pad2(d.hour)}:${_pad2(d.minute)}';
+
+/// Format tanggal numerik, contoh: "06/11/2026" (dipakai teks share).
+String formatDateNumeric(DateTime d) =>
+    '${_pad2(d.day)}/${_pad2(d.month)}/${d.year}';
 
 /// Format tanggal + jam, contoh: "20 Okt 2026, 14:35".
 String formatDateTime(DateTime date) {
