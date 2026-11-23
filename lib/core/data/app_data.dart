@@ -10,6 +10,7 @@ import '../services/account_store.dart';
 import '../services/charge_service.dart';
 import '../services/order_service.dart';
 import '../services/product_service.dart';
+import '../services/receipt_settings_service.dart';
 import '../services/sales_history_service.dart';
 import '../services/shift_service.dart';
 import '../services/stock_service.dart';
@@ -79,6 +80,7 @@ class AppData extends ChangeNotifier {
     _salesFilter = null;
     _productSales = [];
     _currentShift = null;
+    _receiptFooter = kDefaultReceiptFooter;
     _cart.clear();
     notifyListeners();
   }
@@ -233,6 +235,7 @@ class AppData extends ChangeNotifier {
     _salesFilter = null;
     _productSales = [];
     _currentShift = null;
+    _receiptFooter = kDefaultReceiptFooter;
     _cart.clear();
     notifyListeners();
   }
@@ -774,6 +777,48 @@ class AppData extends ChangeNotifier {
     _currentShift = null;
     notifyListeners();
     return closed;
+  }
+
+  // ---- Pengaturan struk ----
+
+  String _receiptFooter = kDefaultReceiptFooter;
+
+  /// Teks penutup struk outlet saat ini. Bawaannya
+  /// "Terima kasih telah berbelanja" sampai user mengubahnya di menu
+  /// Pengaturan Struk.
+  String get receiptFooter => _receiptFooter;
+
+  /// Muat teks penutup struk outlet saat ini (dipanggil saat masuk
+  /// shell, termasuk setelah ganti akun).
+  Future<void> loadReceiptFooter() async {
+    final outletId = currentOutlet?.id;
+    final userId = _currentUser?.id;
+
+    try {
+      final footer = await ReceiptSettingsService.instance.fetchFooter(
+        outletId,
+      );
+      // Ganti akun bisa terjadi saat baca: jangan pasang teks outlet lama
+      // ke sesi baru.
+      if (_currentUser?.id != userId) return;
+      _receiptFooter = footer;
+      notifyListeners();
+    } catch (_) {
+      // Gagal baca (storage rusak): pakai teks yang sedang tampil.
+    }
+  }
+
+  /// Simpan teks penutup struk. Teks kosong kembali ke default.
+  Future<void> saveReceiptFooter(String text) async {
+    final outletId = currentOutlet?.id;
+    final userId = _currentUser?.id;
+    final normalized = ReceiptSettingsService.normalizeFooter(text);
+
+    await ReceiptSettingsService.instance.saveFooter(outletId, normalized);
+
+    if (_currentUser?.id != userId) return;
+    _receiptFooter = normalized;
+    notifyListeners();
   }
 
   // ---- Keranjang ----

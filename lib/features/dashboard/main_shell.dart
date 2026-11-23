@@ -8,6 +8,7 @@ import '../auth/account_switcher_sheet.dart';
 import '../orders/order_list_page.dart';
 import '../stock/stok_bahan_page.dart';
 import '../history/sales_history_page.dart';
+import '../receipt/receipt_settings_page.dart';
 import '../shift/shift_sheets.dart';
 
 class MainShell extends StatefulWidget {
@@ -36,6 +37,10 @@ class _MainShellState extends State<MainShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _ensureShiftOpen();
     });
+    // Teks penutup struk per outlet dimuat dari penyimpanan lokal.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) AppData.instance.loadReceiptFooter();
+    });
   }
 
   Future<void> _ensureShiftOpen() async {
@@ -57,6 +62,7 @@ class _MainShellState extends State<MainShell> {
     'Sisa Stok',
     'Daftar Pesanan',
     'Riwayat Penjualan',
+    'Pengaturan Struk',
   ];
 
   final List<Widget> _pages = [
@@ -65,6 +71,7 @@ class _MainShellState extends State<MainShell> {
     const StokBahanPage(),
     const OrderListPage(),
     const SalesHistoryPage(),
+    const ReceiptSettingsPage(),
   ];
 
   /// Logout perangkat ini. Bila masih ada akun tersimpan lain, app
@@ -198,6 +205,12 @@ class _MainShellState extends State<MainShell> {
                     Icons.egg_outlined,
                     Icons.egg,
                     'Sisa Stok',
+                  ),
+                  _buildMenuItem(
+                    5,
+                    Icons.settings_suggest_outlined,
+                    Icons.settings_suggest,
+                    'Pengaturan Struk',
                   ),
                 ],
               ),
