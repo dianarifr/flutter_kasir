@@ -18,6 +18,7 @@ import '../../core/services/order_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/utils/formatters.dart';
+import '../receipt/receipt_actions.dart';
 
 class OrderDetailPage extends StatefulWidget {
   /// Id order untuk mode lazy-load; diabaikan bila [order] terisi.
@@ -36,6 +37,9 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   Order? _order;
   bool _isLoading = false;
   String? _error;
+
+  /// Menonaktifkan "Cetak Struk" selama proses bagikan berjalan.
+  bool _isSharing = false;
 
   @override
   void initState() {
@@ -64,17 +68,42 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    final order = _order;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Detail Transaksi')),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
           ? _ErrorView(message: _error!, onRetry: _load)
-          : _order == null
+          : order == null
           ? const SizedBox.shrink()
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
-              child: _OrderDetailCard(order: _order!),
+              child: _OrderDetailCard(order: order),
+            ),
+      // Cetak & bagikan hanya masuk akal ketika order sudah termuat.
+      // Gambar yang dibagikan adalah struk resmi (sama dengan halaman
+      // struk), bukan tangkapan layar kartu detail ini.
+      bottomNavigationBar: order == null
+          ? null
+          : SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: PrintReceiptButton(enabled: !_isSharing),
+                    ),
+                    const SizedBox(width: 8),
+                    ShareReceiptButton(
+                      order: order,
+                      onBusyChanged: (busy) =>
+                          setState(() => _isSharing = busy),
+                    ),
+                  ],
+                ),
+              ),
             ),
     );
   }
