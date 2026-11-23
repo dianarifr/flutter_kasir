@@ -85,7 +85,10 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
                 const SizedBox(height: 28),
 
-                Text('Aktivitas Terakhir', style: theme.textTheme.headlineMedium),
+                Text(
+                  'Aktivitas Terakhir',
+                  style: theme.textTheme.headlineMedium,
+                ),
                 const SizedBox(height: 12),
 
                 if (data.isLoadingOrders && data.orders.isEmpty)
@@ -143,13 +146,19 @@ class _DashboardPageState extends State<DashboardPage> {
                             style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
                           subtitle: Text(
-                            '${order.itemsSummary} • ${order.isPaid ? order.paymentMethod?.label ?? 'Lunas' : order.status.label}',
+                            '${order.itemsSummary} • ${order.status == OrderStatus.dibatalkan
+                                ? 'Dibatalkan'
+                                : order.isPaid
+                                ? order.paymentMethod?.label ?? 'Lunas'
+                                : order.status.label}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           trailing: Text(
                             formatRupiah(order.total),
-                            style: AppTextStyles.priceTag.copyWith(fontSize: 14),
+                            style: AppTextStyles.priceTag.copyWith(
+                              fontSize: 14,
+                            ),
                           ),
                         );
                       },
@@ -209,15 +218,14 @@ class _DashboardPageState extends State<DashboardPage> {
               Text(
                 shift != null && summary != null
                     ? '${summary.transactionCount} transaksi • '
-                        'Shift mulai ${formatTime(shift.startTime)}'
+                          'Shift mulai ${formatTime(shift.startTime)}'
                     : data.paidOrders.isEmpty
-                        ? 'Belum ada transaksi • Shift belum dibuka'
-                        : '${data.paidOrders.length} transaksi lunas • '
-                            'Shift belum dibuka',
+                    ? 'Belum ada transaksi • Shift belum dibuka'
+                    : '${data.paidOrders.length} transaksi lunas • '
+                          'Shift belum dibuka',
                 style: TextStyle(
                   fontSize: 12,
-                  color:
-                      shift != null ? AppColors.success : AppColors.inkMuted,
+                  color: shift != null ? AppColors.success : AppColors.inkMuted,
                 ),
               ),
               const SizedBox(height: 12),
@@ -231,10 +239,7 @@ class _DashboardPageState extends State<DashboardPage> {
                       )
                     : OutlinedButton.icon(
                         onPressed: () => showOpenShiftSheet(context),
-                        icon: const Icon(
-                          Icons.play_circle_outline,
-                          size: 18,
-                        ),
+                        icon: const Icon(Icons.play_circle_outline, size: 18),
                         label: const Text('Buka Shift'),
                       ),
               ),

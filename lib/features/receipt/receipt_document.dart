@@ -156,10 +156,7 @@ class ReceiptDocument extends StatelessWidget {
                 children: [
                   const Text(
                     'Total',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                    ),
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                   ),
                   Text(
                     formatRupiah(order.total),
@@ -175,6 +172,17 @@ class ReceiptDocument extends StatelessWidget {
                     ? _cancelBadge()
                     : _statusBadge(order.isPaid),
               ),
+              if (order.status == OrderStatus.dibatalkan &&
+                  order.cancelReason.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Center(
+                  child: Text(
+                    'Alasan: ${order.cancelReason}',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               if (order.isPaid) ...[
                 _infoRow('Metode', order.paymentMethod?.label ?? '-'),

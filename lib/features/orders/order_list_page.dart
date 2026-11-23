@@ -9,6 +9,7 @@ import '../../core/utils/formatters.dart';
 import '../pos/pos_payment_page.dart';
 import '../receipt/receipt_page.dart';
 import '../history/period_pickers.dart';
+import 'cancel_order_dialog.dart';
 
 class OrderListPage extends StatefulWidget {
   const OrderListPage({super.key});
@@ -61,8 +62,7 @@ class _OrderListPageState extends State<OrderListPage>
     await _data.loadOrdersForDate(picked);
   }
 
-  Future<void> _backToToday() =>
-      _data.loadOrdersForDate(DateTime.now());
+  Future<void> _backToToday() => _data.loadOrdersForDate(DateTime.now());
 
   /// Muat ulang tanggal yang sedang dipilih (pull-to-refresh / coba lagi).
   Future<void> _reload() => _data.loadOrdersForDate(_data.orderListDate);
@@ -102,11 +102,21 @@ class _OrderListPageState extends State<OrderListPage>
   }
 
   /// Batalkan pesanan lewat backend (stok bahan dikembalikan server).
-  /// Backend menolak batal untuk order yang sudah dibayar.
+  ///
+  /// Order yang sudah selesai hanya bisa dibatalkan admin dan wajib
+  /// punya keterangan; order `diproses` tetap seperti alur lama.
   Future<void> _cancelOrder(Order order) async {
     final messenger = ScaffoldMessenger.of(context);
+
+    String? reason;
+    final butuhAlasan = order.status == OrderStatus.selesai;
+    if (butuhAlasan) {
+      reason = await showCancelOrderDialog(context, order: order);
+      if (reason == null || !mounted) return;
+    }
+
     try {
-      await _data.cancelOrder(order);
+      await _data.cancelOrder(order, reason: reason);
       messenger.showSnackBar(
         const SnackBar(
           content: Text('Pesanan dibatalkan, stok bahan dikembalikan.'),
@@ -217,7 +227,13 @@ class _OrderListPageState extends State<OrderListPage>
                 // "Tandai Selesai" dihapus: status selesai kini hanya
                 // bisa dicapai lewat pembayaran supaya selalu ada
                 // catatan pembayaran (nominal & metode).
-                if (order.status == OrderStatus.diproses) ...[
+                //
+                // Order selesai/lunas hanya boleh dibatalkan admin dan
+                // wajib mengisi keterangan (dialog di _cancelOrder).
+                if (order.status == OrderStatus.diproses ||
+                    (order.status == OrderStatus.selesai &&
+                        order.isPaid &&
+                        _data.isAdmin)) ...[
                   const Divider(),
                   ListTile(
                     title: const Center(
@@ -339,10 +355,7 @@ class _OrderListPageState extends State<OrderListPage>
           ),
           if (!_isToday) ...[
             const SizedBox(width: 8),
-            TextButton(
-              onPressed: _backToToday,
-              child: const Text('Hari ini'),
-            ),
+            TextButton(onPressed: _backToToday, child: const Text('Hari ini')),
           ],
         ],
       ),
@@ -366,10 +379,7 @@ class _OrderListPageState extends State<OrderListPage>
               style: const TextStyle(color: AppColors.inkMuted),
             ),
             const SizedBox(height: 12),
-            OutlinedButton(
-              onPressed: _reload,
-              child: const Text('Coba Lagi'),
-            ),
+            OutlinedButton(onPressed: _reload, child: const Text('Coba Lagi')),
           ],
         ),
       );
@@ -403,7 +413,8 @@ class _OrderListPageState extends State<OrderListPage>
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         itemCount: orders.length,
-        itemBuilder: (context, index) => _buildOrderCard(context, orders[index]),
+        itemBuilder: (context, index) =>
+            _buildOrderCard(context, orders[index]),
       ),
     );
   }
@@ -508,6 +519,14 @@ class _OrderListPageState extends State<OrderListPage>
               order.dateLabel,
               style: const TextStyle(fontSize: 12, color: AppColors.inkMuted),
             ),
+            if (order.status == OrderStatus.dibatalkan &&
+                order.cancelReason.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Alasan batal: ${order.cancelReason}',
+                style: const TextStyle(fontSize: 12, color: AppColors.error),
+              ),
+            ],
 
             if (isExpanded) ...[
               const Divider(height: 24),

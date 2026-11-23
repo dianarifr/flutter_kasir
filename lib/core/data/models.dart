@@ -94,11 +94,7 @@ class Outlet {
 
   /// Bentuk untuk disimpan di daftar akun ([AccountStore]) — simetris
   /// dengan [fromJson].
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-    'address': address,
-  };
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'address': address};
 }
 
 /// User yang sedang login, termasuk outlet-nya (bisa null untuk admin).
@@ -120,6 +116,9 @@ class AuthUser {
     required this.role,
     this.outlet,
   });
+
+  /// Admin = boleh masuk panel web dan boleh membatalkan transaksi lunas.
+  bool get isAdmin => role == 'admin';
 
   factory AuthUser.fromJson(Map<String, dynamic> json) => AuthUser(
     id: json['id'] as int,
@@ -343,7 +342,9 @@ class StockWarning {
   /// "Chili oil habis (terpakai oleh: Dimsum besar mentai 8)".
   String get label {
     final state = stockAfter < 0 ? 'kurang' : 'habis';
-    final usedBy = products.isEmpty ? '' : ' (terpakai oleh: ${products.join(', ')})';
+    final usedBy = products.isEmpty
+        ? ''
+        : ' (terpakai oleh: ${products.join(', ')})';
     return '$componentName $state$usedBy';
   }
 
@@ -431,6 +432,13 @@ class Order {
   int splitCash;
   int splitNonCash;
 
+  /// Alasan pembatalan dari admin (kosong untuk order yang belum dibatalkan).
+  final String cancelReason;
+
+  /// Waktu & nama admin yang membatalkan (null/kosong bila belum batal).
+  final DateTime? cancelledAt;
+  final String cancelledBy;
+
   Order({
     required this.id,
     this.code = '',
@@ -449,6 +457,9 @@ class Order {
     this.changeGiven = 0,
     this.splitCash = 0,
     this.splitNonCash = 0,
+    this.cancelReason = '',
+    this.cancelledAt,
+    this.cancelledBy = '',
   });
 
   int get total => subtotal - discount + extraFee;
@@ -470,8 +481,7 @@ class Order {
     createdAt:
         // toISOString() backend mengirim UTC (akhiran Z); konversi ke
         // waktu lokal perangkat supaya jam yang tampil WIB.
-        DateTime.tryParse(json['created_at'] as String? ?? '')
-            ?.toLocal() ??
+        DateTime.tryParse(json['created_at'] as String? ?? '')?.toLocal() ??
         DateTime.now(),
     queueNumber: _asInt(json['queue_number']),
     items: (json['items'] as List<dynamic>? ?? const [])
@@ -490,6 +500,10 @@ class Order {
     changeGiven: _asInt(json['change_amount']),
     splitCash: _asInt(json['split_cash']),
     splitNonCash: _asInt(json['split_non_cash']),
+    cancelReason: json['cancel_reason'] as String? ?? '',
+    cancelledAt: DateTime.tryParse(json['cancelled_at'] as String? ?? '')
+        ?.toLocal(),
+    cancelledBy: json['cancelled_by'] as String? ?? '',
   );
 
   static OrderStatus _statusFromApi(String? raw) {
@@ -568,10 +582,7 @@ class SalesFilter {
     if (period == 'daily') 'date': date,
     if (period == 'monthly') 'month': month,
     if (period == 'yearly') 'year': year,
-    if (period == 'custom') ...{
-      'start_date': startDate,
-      'end_date': endDate,
-    },
+    if (period == 'custom') ...{'start_date': startDate, 'end_date': endDate},
   };
 
   /// Label periode untuk tampilan, contoh: "Sen, 20 Okt 2026" / "Okt 2026".
@@ -645,8 +656,7 @@ class SalesOrder {
     cashierName: json['cashier_name'] as String? ?? '',
     createdAt:
         // Konversi UTC -> lokal, sama seperti di Order.fromJson.
-        DateTime.tryParse(json['created_at'] as String? ?? '')
-            ?.toLocal() ??
+        DateTime.tryParse(json['created_at'] as String? ?? '')?.toLocal() ??
         DateTime.now(),
   );
 
@@ -688,10 +698,9 @@ class SalesHistory {
     return SalesHistory(
       period: json['period'] as String? ?? '',
       rangeStart:
-          DateTime.tryParse(range['start'] as String? ?? '') ??
-          DateTime.now(),
-      rangeEnd: DateTime.tryParse(range['end'] as String? ?? '') ??
-          DateTime.now(),
+          DateTime.tryParse(range['start'] as String? ?? '') ?? DateTime.now(),
+      rangeEnd:
+          DateTime.tryParse(range['end'] as String? ?? '') ?? DateTime.now(),
       summary: SalesSummary.fromJson(
         json['summary'] as Map<String, dynamic>? ?? {},
       ),
@@ -803,8 +812,7 @@ class Shift {
     startTime:
         // ISO8601 dari backend memakai UTC (toISOString()); konversi ke
         // waktu lokal perangkat supaya jam shift tampil WIB, bukan UTC.
-        DateTime.tryParse(json['start_time'] as String? ?? '')
-            ?.toLocal() ??
+        DateTime.tryParse(json['start_time'] as String? ?? '')?.toLocal() ??
         DateTime.now(),
     endTime: json['end_time'] == null
         ? null

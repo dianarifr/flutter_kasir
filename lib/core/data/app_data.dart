@@ -37,6 +37,9 @@ class AppData extends ChangeNotifier {
   /// User yang sedang login (`null` sebelum login).
   AuthUser? get currentUser => _currentUser;
 
+  /// `true` bila user aktif berperan admin (boleh batalkan transaksi lunas).
+  bool get isAdmin => _currentUser?.isAdmin ?? false;
+
   /// Outlet tempat user bertugas (`null` jika belum login / admin).
   Outlet? get currentOutlet => _currentUser?.outlet;
 
@@ -169,7 +172,7 @@ class AppData extends ChangeNotifier {
   }
 
   /// Logout perangkat ini: hapus token di backend, keluarkan akun aktif
-/// dari daftar, lalu otomatis pindah ke akun lain bila ada.
+  /// dari daftar, lalu otomatis pindah ke akun lain bila ada.
   ///
   /// Gagal request ke backend (server mati / token sudah hangus / 401)
   /// TIDAK boleh menggagalkan logout — pembersihan lokal tetap jalan.
@@ -632,8 +635,7 @@ class AppData extends ChangeNotifier {
     return DateTime(now.year, now.month, now.day);
   }
 
-  static DateTime _dateOnly(DateTime d) =>
-      DateTime(d.year, d.month, d.day);
+  static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
   static bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
@@ -928,8 +930,7 @@ class AppData extends ChangeNotifier {
       .toList();
 
   /// Omzet dari order lunas yang dibuat hari ini.
-  int get todayRevenue =>
-      paidOrders.fold(0, (sum, o) => sum + o.total);
+  int get todayRevenue => paidOrders.fold(0, (sum, o) => sum + o.total);
 
   /// Bahan dengan stok <= ambang minimum (untuk kartu Stok Kritis).
   List<ComponentStock> get criticalStock =>
@@ -947,14 +948,12 @@ class AppData extends ChangeNotifier {
     // menampilkan aktivitas shift aktif (atau hari ini bila belum ada
     // shift), bukan tanggal yang sedang dibuka di Daftar Pesanan.
     final source = shift != null
-        ? _orders
-              .where((o) => !o.createdAt.isBefore(shift.startTime))
-              .toList()
+        ? _orders.where((o) => !o.createdAt.isBefore(shift.startTime)).toList()
         : _orders
               .where((o) => _isSameDay(o.createdAt, DateTime.now()))
               .toList();
-    final sorted =
-        [...source]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final sorted = [...source]
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return sorted.take(4).toList();
   }
 
@@ -967,9 +966,7 @@ class AppData extends ChangeNotifier {
   /// hanya diberi tahu. Butuh data stok produk dengan detail komponen.
   List<String> stockIssuesFor(String productId, int qty) {
     final issues = <String>[];
-    final matches = _productStocks.where(
-      (s) => s.id.toString() == productId,
-    );
+    final matches = _productStocks.where((s) => s.id.toString() == productId);
     if (matches.isEmpty) return issues;
 
     final stock = matches.first;
@@ -1105,13 +1102,18 @@ class AppData extends ChangeNotifier {
   }
 
   /// Batalkan order lewat backend (stok bahan dikembalikan server).
-  /// Backend menolak batal untuk order yang sudah dibayar.
-  Future<Order> cancelOrder(Order order) async {
+  ///
+  /// [reason] wajib untuk order yang sudah selesai (admin); order yang
+  /// masih diproses boleh dibatalkan kasir tanpa alasan.
+  Future<Order> cancelOrder(Order order, {String? reason}) async {
     final updated = await OrderService.instance.cancelOrder(
       int.parse(order.id),
+      reason: reason,
     );
     _replaceOrder(updated);
     unawaited(reloadStocks());
+    // Ringkasan shift & omzet ikut berubah setelah pembatalan.
+    unawaited(loadCurrentShift());
     return updated;
   }
 

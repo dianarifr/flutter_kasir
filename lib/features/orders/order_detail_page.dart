@@ -13,12 +13,15 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../core/data/app_data.dart';
 import '../../core/data/models.dart';
+import '../../core/network/api_exception.dart';
 import '../../core/services/order_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/utils/formatters.dart';
 import '../receipt/receipt_actions.dart';
+import 'cancel_order_dialog.dart';
 
 class OrderDetailPage extends StatefulWidget {
   /// Id order untuk mode lazy-load; diabaikan bila [order] terisi.
@@ -66,12 +69,64 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
     }
   }
 
+  /// Admin membatalkan transaksi selesai dari halaman detail.
+  Future<void> _cancelOrder(Order order) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final reason = await showCancelOrderDialog(context, order: order);
+    if (reason == null || !mounted) return;
+
+    try {
+      final updated = await AppData.instance.cancelOrder(order, reason: reason);
+      if (!mounted) return;
+      setState(() => _order = updated);
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Pesanan dibatalkan, stok bahan dikembalikan.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } on ApiException catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: AppColors.error),
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Tidak dapat terhubung ke server.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final order = _order;
+    final bisaBatalkan =
+        order != null &&
+        order.status == OrderStatus.selesai &&
+        order.isPaid &&
+        AppData.instance.isAdmin;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Detail Transaksi')),
+      appBar: AppBar(
+        title: const Text('Detail Transaksi'),
+        actions: [
+          if (bisaBatalkan)
+            PopupMenuButton<String>(
+              onSelected: (_) => _cancelOrder(order),
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'cancel',
+                  child: Text(
+                    'Batalkan Pesanan',
+                    style: TextStyle(color: AppColors.error),
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -92,9 +147,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    Expanded(
-                      child: PrintReceiptButton(enabled: !_isSharing),
-                    ),
+                    Expanded(child: PrintReceiptButton(enabled: !_isSharing)),
                     const SizedBox(width: 8),
                     ShareReceiptButton(
                       order: order,
@@ -197,6 +250,14 @@ class _OrderDetailCard extends StatelessWidget {
               order.dateLabel,
               style: const TextStyle(fontSize: 12, color: AppColors.inkMuted),
             ),
+            if (order.status == OrderStatus.dibatalkan &&
+                order.cancelReason.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Alasan batal: ${order.cancelReason}',
+                style: const TextStyle(fontSize: 12, color: AppColors.error),
+              ),
+            ],
 
             const Divider(height: 24),
 
@@ -248,7 +309,10 @@ class _OrderDetailCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('${item.qty}x ${item.name}', style: const TextStyle(fontSize: 13)),
+                Text(
+                  '${item.qty}x ${item.name}',
+                  style: const TextStyle(fontSize: 13),
+                ),
                 if (item.note.isNotEmpty)
                   Text(
                     'Catatan: ${item.note}',

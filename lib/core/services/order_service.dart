@@ -86,9 +86,15 @@ class OrderService {
   }
 
   /// Batalkan order (stok bahan dikembalikan oleh backend).
-  /// Backend menolak batal untuk order yang sudah dibayar.
-  Future<Order> cancelOrder(int orderId) async {
-    final body = await _client.post('/orders/$orderId/cancel');
+  ///
+  /// [reason] wajib untuk order yang sudah selesai/lunas (divalidasi
+  /// backend); order yang masih diproses boleh tanpa alasan.
+  Future<Order> cancelOrder(int orderId, {String? reason}) async {
+    final trimmed = reason?.trim() ?? '';
+    final body = await _client.post(
+      '/orders/$orderId/cancel',
+      body: {if (trimmed.isNotEmpty) 'reason': trimmed},
+    );
     return Order.fromJson(
       (body as Map<String, dynamic>)['data'] as Map<String, dynamic>,
     );
@@ -135,9 +141,7 @@ class OrderService {
     );
 
     final data = (body as Map<String, dynamic>)['data'] as List<dynamic>;
-    return data
-        .map((e) => Order.fromJson(e as Map<String, dynamic>))
-        .toList();
+    return data.map((e) => Order.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   /// Detail satu order (item, charge, data pembayaran lengkap).
