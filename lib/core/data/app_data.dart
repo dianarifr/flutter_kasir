@@ -75,6 +75,8 @@ class AppData extends ChangeNotifier {
     _chargesError = null;
     _chargesFetchedAt = null;
     _orders = [];
+    _ordersDate = _today();
+    _orderListDate = _today();
     _customers = [];
     _salesHistory = null;
     _salesFilter = null;
@@ -230,6 +232,8 @@ class AppData extends ChangeNotifier {
     _chargesError = null;
     _chargesFetchedAt = null;
     _orders = [];
+    _ordersDate = _today();
+    _orderListDate = _today();
     _customers = [];
     _salesHistory = null;
     _salesFilter = null;
@@ -530,20 +534,49 @@ class AppData extends ChangeNotifier {
   bool _isLoadingOrders = false;
   String? _ordersError;
 
-  /// Daftar order hari ini pada outlet saat ini (dari API).
+  /// Tanggal data yang **sedang dimuat** di [orders].
+  ///
+  /// Dipakai untuk tahu kapan cache harus dibuang saat tanggal berganti.
+  DateTime _ordersDate = _today();
+
+  /// Tanggal yang dipilih kasir di menu Daftar Pesanan.
+  ///
+  /// Terpisah dari [_ordersDate] supaya Dashboard (yang selalu butuh data
+  /// hari ini) tidak menghapus pilihan tanggal kasir.
+  DateTime _orderListDate = _today();
+
+  /// Daftar order pada [ordersDate] untuk outlet saat ini (dari API).
   List<Order> get orders => List.unmodifiable(_orders);
+
+  /// Tanggal data order yang sedang dimuat.
+  DateTime get ordersDate => _ordersDate;
+
+  /// Tanggal yang sedang dipilih di Daftar Pesanan (bertahan antar menu).
+  DateTime get orderListDate => _orderListDate;
 
   bool get isLoadingOrders => _isLoadingOrders;
 
   String? get ordersError => _ordersError;
 
-  /// Muat daftar order dari API untuk outlet user yang sedang login.
-  Future<void> loadOrders() async {
+  /// Muat daftar order untuk [date] (default: hari ini).
+  ///
+  /// Dashboard dan tutup shift memanggil ini dengan tanggal hari ini,
+  /// sedangkan Daftar Pesanan memakai [loadOrdersForDate] agar pilihan
+  /// tanggal kasir tersimpan.
+  Future<void> loadOrders({DateTime? date}) async {
     final outlet = currentOutlet;
     if (outlet == null) {
       _ordersError = 'Outlet tidak ditemukan untuk user ini.';
       notifyListeners();
       return;
+    }
+
+    final target = _dateOnly(date ?? _today());
+    // Ganti tanggal: buang kartu lama supaya order kemarin tidak sempat
+    // tampil di bawah label tanggal yang baru.
+    if (!_isSameDay(target, _ordersDate)) {
+      _ordersDate = target;
+      _orders = [];
     }
 
     _isLoadingOrders = true;
@@ -553,7 +586,10 @@ class AppData extends ChangeNotifier {
     final userId = _currentUser?.id;
 
     try {
-      final fetched = await OrderService.instance.fetchOrders(outlet.id);
+      final fetched = await OrderService.instance.fetchOrders(
+        outlet.id,
+        date: target,
+      );
       if (_currentUser?.id != userId) return;
       _orders = fetched;
     } on ApiException catch (e) {
@@ -568,16 +604,39 @@ class AppData extends ChangeNotifier {
     }
   }
 
+  /// Muat order untuk tanggal tertentu dari Daftar Pesanan.
+  ///
+  /// Tanggal pilihan kasir disimpan di [orderListDate] supaya tetap
+  /// terpakai saat halaman dibuka ulang (mis. setelah pindah menu).
+  Future<void> loadOrdersForDate(DateTime date) async {
+    _orderListDate = _dateOnly(date);
+    await loadOrders(date: _orderListDate);
+  }
+
   /// Ganti order lama dengan versi terbaru dari backend (berdasarkan id).
   void _replaceOrder(Order updated) {
     final index = _orders.indexWhere((o) => o.id == updated.id);
     if (index >= 0) {
       _orders[index] = updated;
-    } else {
+    } else if (_isSameDay(_dateOnly(updated.createdAt), _ordersDate)) {
+      // Order baru hanya masuk kalau tanggalnya cocok dengan daftar yang
+      // sedang tampil, supaya filter tanggal tidak bocor.
       _orders.insert(0, updated);
     }
     notifyListeners();
   }
+
+  /// Tanggal hari ini tanpa jam — dasar filter Daftar Pesanan.
+  static DateTime _today() {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
+  }
+
+  static DateTime _dateOnly(DateTime d) =>
+      DateTime(d.year, d.month, d.day);
+
+  static bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 
   // ---- Data dari API: pelanggan (untuk autocomplete checkout) ----
   List<String> _customers = [];
@@ -854,22 +913,23 @@ class AppData extends ChangeNotifier {
     return sum + product.price * entry.value;
   });
 
-  /// Order yang lunas (dan tidak dibatalkan).
-  List<Order> get paidOrders =>
-      _orders.where((o) => o.isPaid && o.status != OrderStatus.dibatalkan).toList();
+  /// Order yang lunas (dan tidak dibatalkan) pada hari ini.
+  ///
+  /// Dibatasi hari ini karena [_orders] bisa berisi tanggal lain saat
+  /// kasir membuka tanggal lampau di Daftar Pesanan, sedangkan angka
+  /// Dashboard selalu soal hari ini.
+  List<Order> get paidOrders => _orders
+      .where(
+        (o) =>
+            o.isPaid &&
+            o.status != OrderStatus.dibatalkan &&
+            _isSameDay(o.createdAt, DateTime.now()),
+      )
+      .toList();
 
   /// Omzet dari order lunas yang dibuat hari ini.
-  int get todayRevenue {
-    final now = DateTime.now();
-    return paidOrders
-        .where(
-          (o) =>
-              o.createdAt.year == now.year &&
-              o.createdAt.month == now.month &&
-              o.createdAt.day == now.day,
-        )
-        .fold(0, (sum, o) => sum + o.total);
-  }
+  int get todayRevenue =>
+      paidOrders.fold(0, (sum, o) => sum + o.total);
 
   /// Bahan dengan stok <= ambang minimum (untuk kartu Stok Kritis).
   List<ComponentStock> get criticalStock =>
@@ -878,15 +938,21 @@ class AppData extends ChangeNotifier {
   /// Aktivitas terakhir untuk dashboard (maks 4, terbaru dulu).
   ///
   /// Saat shift aktif, hanya order yang dibuat sejak shift dibuka —
-  /// sesuai periode kerja kasir. Tanpa shift: fallback ke order terbaru.
+  /// sesuai periode kerja kasir. Tanpa shift: fallback ke order hari ini.
+  /// Daftar [_orders] sendiri selalu satu tanggal, jadi shift yang lewat
+  /// tengah malam hanya menampilkan bagian hari ini di kartu aktivitas.
   List<Order> get recentOrders {
     final shift = currentShift;
-    var source = _orders;
-    if (shift != null) {
-      source = _orders
-          .where((o) => !o.createdAt.isBefore(shift.startTime))
-          .toList();
-    }
+    // Daftar bisa sedang menampilkan tanggal lampau; dashboard hanya
+    // menampilkan aktivitas shift aktif (atau hari ini bila belum ada
+    // shift), bukan tanggal yang sedang dibuka di Daftar Pesanan.
+    final source = shift != null
+        ? _orders
+              .where((o) => !o.createdAt.isBefore(shift.startTime))
+              .toList()
+        : _orders
+              .where((o) => _isSameDay(o.createdAt, DateTime.now()))
+              .toList();
     final sorted =
         [...source]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return sorted.take(4).toList();
@@ -983,7 +1049,11 @@ class AppData extends ChangeNotifier {
     );
 
     // Order baru paling atas; keranjang dikosongkan; stok dimuat ulang.
-    _orders.insert(0, result.order);
+    // Hanya disisipkan bila daftar yang sedang tampil memang hari ini —
+    // kasir bisa sedang membuka tanggal lain di Daftar Pesanan.
+    if (_isSameDay(_dateOnly(result.order.createdAt), _ordersDate)) {
+      _orders.insert(0, result.order);
+    }
     _cart.clear();
     notifyListeners();
 

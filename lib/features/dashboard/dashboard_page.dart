@@ -26,7 +26,9 @@ class _DashboardPageState extends State<DashboardPage> {
     // selalu segar: omzet dari order API, stok kritis dari stok bahan,
     // dan ringkasan shift aktif (angka live sejak shift dibuka).
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _data.loadOrders();
+      // Dashboard selalu soal hari ini, jadi minta tanggal hari ini —
+      // jangan ikut tanggal yang sedang dipilih di Daftar Pesanan.
+      _data.loadOrders(date: DateTime.now());
       _data.loadComponentStock();
       _data.loadCurrentShift();
     });
@@ -48,7 +50,7 @@ class _DashboardPageState extends State<DashboardPage> {
         return RefreshIndicator(
           onRefresh: () async {
             await Future.wait([
-              data.loadOrders(),
+              data.loadOrders(date: DateTime.now()),
               data.loadComponentStock(),
               data.loadCurrentShift(),
             ]);

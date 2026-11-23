@@ -259,8 +259,9 @@ class _CloseShiftSheetState extends State<_CloseShiftSheet> {
         ),
       );
 
-      // Segarkan daftar aktivitas & angka fallback di dashboard.
-      AppData.instance.loadOrders();
+      // Segarkan daftar aktivitas & angka fallback di dashboard
+      // (selalu hari ini, bukan tanggal yang sedang dibuka di Daftar Pesanan).
+      AppData.instance.loadOrders(date: DateTime.now());
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _submitting = false);

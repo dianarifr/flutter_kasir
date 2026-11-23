@@ -8,6 +8,7 @@ import '../../core/data/models.dart';
 import '../../core/utils/formatters.dart';
 import '../pos/pos_payment_page.dart';
 import '../receipt/receipt_page.dart';
+import '../history/period_pickers.dart';
 
 class OrderListPage extends StatefulWidget {
   const OrderListPage({super.key});
@@ -29,9 +30,9 @@ class _OrderListPageState extends State<OrderListPage>
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     // Muat order dari API setiap halaman dibuka (initState jalan ulang
-    // setiap tab dipilih).
+    // setiap tab dipilih), memakai tanggal yang terakhir dipilih kasir.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _data.loadOrders();
+      _data.loadOrdersForDate(_data.orderListDate);
     });
   }
 
@@ -40,6 +41,31 @@ class _OrderListPageState extends State<OrderListPage>
     _tabController.dispose();
     super.dispose();
   }
+
+  /// `true` bila daftar sedang menampilkan hari ini.
+  bool get _isToday {
+    final now = DateTime.now();
+    final date = _data.orderListDate;
+    return date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day;
+  }
+
+  /// Pilih tanggal lain lewat kalender (maksimal hari ini).
+  Future<void> _pickDate() async {
+    final picked = await showDailyPickerSheet(
+      context,
+      initial: _data.orderListDate,
+    );
+    if (picked == null || !mounted) return;
+    await _data.loadOrdersForDate(picked);
+  }
+
+  Future<void> _backToToday() =>
+      _data.loadOrdersForDate(DateTime.now());
+
+  /// Muat ulang tanggal yang sedang dipilih (pull-to-refresh / coba lagi).
+  Future<void> _reload() => _data.loadOrdersForDate(_data.orderListDate);
 
   List<Order> _filteredOrders(OrderStatus? status) {
     final query = _query.trim().toLowerCase();
@@ -241,9 +267,10 @@ class _OrderListPageState extends State<OrderListPage>
           ),
           body: Column(
             children: [
+              _buildDateFilter(),
               // Bar pencarian
               Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: TextField(
                   onChanged: (val) => setState(() => _query = val),
                   decoration: const InputDecoration(
@@ -276,6 +303,52 @@ class _OrderListPageState extends State<OrderListPage>
     );
   }
 
+  /// Baris filter tanggal: menampilkan tanggal yang aktif dan jalan pintas
+  /// kembali ke hari ini. Tanpa filter ini kasir hanya bisa melihat
+  /// transaksi hari ini karena backend membatasi default ke hari ini.
+  Widget _buildDateFilter() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: _pickDate,
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Tanggal',
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  suffixIcon: Icon(
+                    Icons.calendar_today_outlined,
+                    size: 18,
+                    color: AppColors.inkMuted,
+                  ),
+                ),
+                child: Text(
+                  _isToday
+                      ? 'Hari ini, ${formatDateShort(_data.orderListDate)}'
+                      : formatDateShort(_data.orderListDate),
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ),
+            ),
+          ),
+          if (!_isToday) ...[
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: _backToToday,
+              child: const Text('Hari ini'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildOrderListView(List<Order> orders) {
     // Status global: loading / error / kosong / isi.
     if (_data.isLoadingOrders && _data.orders.isEmpty) {
@@ -294,7 +367,7 @@ class _OrderListPageState extends State<OrderListPage>
             ),
             const SizedBox(height: 12),
             OutlinedButton(
-              onPressed: _data.loadOrders,
+              onPressed: _reload,
               child: const Text('Coba Lagi'),
             ),
           ],
@@ -304,16 +377,18 @@ class _OrderListPageState extends State<OrderListPage>
 
     if (orders.isEmpty) {
       return RefreshIndicator(
-        onRefresh: () => _data.loadOrders(),
+        onRefresh: _reload,
         child: LayoutBuilder(
           builder: (context, constraints) => SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             child: SizedBox(
               height: constraints.maxHeight,
-              child: const Center(
+              child: Center(
                 child: Text(
-                  'Belum ada pesanan',
-                  style: TextStyle(color: AppColors.inkMuted),
+                  _isToday
+                      ? 'Belum ada pesanan'
+                      : 'Belum ada pesanan pada tanggal ini',
+                  style: const TextStyle(color: AppColors.inkMuted),
                 ),
               ),
             ),
@@ -323,7 +398,7 @@ class _OrderListPageState extends State<OrderListPage>
     }
 
     return RefreshIndicator(
-      onRefresh: () => _data.loadOrders(),
+      onRefresh: _reload,
       child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

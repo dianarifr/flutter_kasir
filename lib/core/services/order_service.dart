@@ -6,7 +6,7 @@
 /// - [cancelOrder]      : POST /orders/{id}/cancel — batalkan + stok dikembalikan.
 /// - [removeOrderItem]  : DELETE /orders/{id}/items/{itemId} — hapus 1 item,
 ///   stok item dikembalikan & total dihitung ulang.
-/// - [fetchOrders]      : GET /orders — daftar order hari ini.
+/// - [fetchOrders]      : GET /orders — daftar order per tanggal (default hari ini).
 /// - [fetchOrder]       : GET /orders/{id} — detail satu order (lengkap).
 /// - [fetchCustomers]   : GET /orders/customers — nama pelanggan (10 terbaru).
 library;
@@ -119,6 +119,7 @@ class OrderService {
   /// Daftar order pada [outletId] (default: hari ini).
   ///
   /// [status] optional: `diproses` | `selesai` | `dibatalkan`.
+  /// [date] optional: tanggal order (lokal, dikirim `YYYY-MM-DD`).
   Future<List<Order>> fetchOrders(
     int outletId, {
     String? status,
