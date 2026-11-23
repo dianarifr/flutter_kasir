@@ -790,34 +790,49 @@ class AppData extends ChangeNotifier {
 
   /// Muat teks penutup struk outlet saat ini (dipanggil saat masuk
   /// shell, termasuk setelah ganti akun).
-  Future<void> loadReceiptFooter() async {
+  ///
+  /// Mengembalikan `true` bila data berasal dari server. `false` berarti
+  /// API tidak terjangkau dan teks cache (atau default) yang dipakai —
+  /// halaman pengaturan memakai ini untuk memberi tahu user.
+  Future<bool> loadReceiptFooter() async {
     final outletId = currentOutlet?.id;
     final userId = _currentUser?.id;
 
+    var fromServer = false;
     try {
+      // Teks dari versi lama (masih lokal) diunggah sekali bila backend
+      // masih kosong, supaya tidak hilang.
+      await ReceiptSettingsService.instance.uploadLocalFooterIfMissing(
+        outletId,
+      );
+
       final footer = await ReceiptSettingsService.instance.fetchFooter(
         outletId,
       );
+      fromServer = true;
       // Ganti akun bisa terjadi saat baca: jangan pasang teks outlet lama
       // ke sesi baru.
-      if (_currentUser?.id != userId) return;
+      if (_currentUser?.id != userId) return fromServer;
       _receiptFooter = footer;
       notifyListeners();
     } catch (_) {
-      // Gagal baca (storage rusak): pakai teks yang sedang tampil.
+      // Gagal baca: pakai teks yang sedang tampil.
     }
+    return fromServer;
   }
 
-  /// Simpan teks penutup struk. Teks kosong kembali ke default.
+  /// Simpan teks penutup struk ke backend. Teks kosong kembali ke default.
+  ///
+  /// Melempar `ApiException` bila server menolak, supaya halaman
+  /// pengaturan bisa menampilkan pesan aslinya.
   Future<void> saveReceiptFooter(String text) async {
     final outletId = currentOutlet?.id;
     final userId = _currentUser?.id;
-    final normalized = ReceiptSettingsService.normalizeFooter(text);
 
-    await ReceiptSettingsService.instance.saveFooter(outletId, normalized);
+    await ReceiptSettingsService.instance.saveFooter(outletId, text);
 
     if (_currentUser?.id != userId) return;
-    _receiptFooter = normalized;
+    _receiptFooter = ReceiptSettingsService.normalizeFooter(text);
     notifyListeners();
   }
 

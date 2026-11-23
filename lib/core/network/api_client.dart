@@ -101,6 +101,24 @@ class ApiClient {
     );
   }
 
+  /// PUT request dengan body JSON (dipakai simpan pengaturan yang
+  /// idempoten, mis. teks penutup struk per outlet).
+  Future<dynamic> put(
+    String path, {
+    Object? body,
+    bool notifyOnUnauthorized = true,
+  }) async {
+    final sentToken = _token;
+    final response = await _client
+        .put(_uri(path), headers: _headers, body: jsonEncode(body ?? {}))
+        .timeout(ApiConfig.timeout);
+    return _handle(
+      response,
+      sentToken: sentToken,
+      notifyOnUnauthorized: notifyOnUnauthorized,
+    );
+  }
+
   /// DELETE request (dipakai hapus item order).
   Future<dynamic> delete(
     String path, {

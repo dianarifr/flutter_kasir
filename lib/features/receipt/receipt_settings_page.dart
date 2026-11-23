@@ -6,7 +6,7 @@ import '../../core/theme/app_colors.dart';
 
 /// Halaman pengaturan struk (menu drawer).
 ///
-/// Saat ini isinya teks penutup struk yang bisa diubah per outlet.
+/// Isinya teks penutup struk yang disimpan di backend per outlet.
 /// Pengaturan printer akan menyusul di halaman yang sama saat fitur
 /// cetak sungguhan tersedia.
 class ReceiptSettingsPage extends StatefulWidget {
@@ -22,10 +22,20 @@ class _ReceiptSettingsPageState extends State<ReceiptSettingsPage> {
   late final TextEditingController _controller;
   bool _isSaving = false;
 
+  /// `true` selama memuat teks terbaru dari server.
+  bool _isLoading = true;
+
+  /// `true` bila pemuatan terakhir berhasil dari server.
+  ///
+  /// Saat `false` (backend tidak terjangkau) tombol Simpan dinonaktifkan:
+  /// jangan sampai teks bawaan menimpa teks asli yang tersimpan di server.
+  bool _loadedFromServer = false;
+
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: AppData.instance.receiptFooter);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   @override
@@ -34,8 +44,24 @@ class _ReceiptSettingsPageState extends State<ReceiptSettingsPage> {
     super.dispose();
   }
 
+  /// Ambil teks terbaru dari server. Dipanggil saat halaman dibuka dan
+  /// saat user menekan "Coba lagi".
+  Future<void> _load() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
+    final fromServer = await AppData.instance.loadReceiptFooter();
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = false;
+      _loadedFromServer = fromServer;
+      _controller.text = AppData.instance.receiptFooter;
+    });
+  }
+
   Future<void> _save() async {
-    if (_isSaving) return;
+    if (_isSaving || !_loadedFromServer) return;
 
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _isSaving = true);
@@ -51,10 +77,12 @@ class _ReceiptSettingsPageState extends State<ReceiptSettingsPage> {
           backgroundColor: AppColors.success,
         ),
       );
-    } catch (_) {
+    } catch (e) {
+      // Pesan dari backend (mis. batas karakter) lebih berguna daripada
+      // pesan umum.
       messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Gagal menyimpan teks struk'),
+        SnackBar(
+          content: Text('Gagal menyimpan: $e'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -85,6 +113,36 @@ class _ReceiptSettingsPageState extends State<ReceiptSettingsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (_isLoading)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 16),
+                  child: LinearProgressIndicator(),
+                )
+              else if (!_loadedFromServer)
+                Card(
+                  color: AppColors.badgeWarningBg,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.cloud_off, size: 20),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Text(
+                            'Tidak bisa memuat pengaturan dari server. '
+                            'Teks di bawah masih dari simpanan terakhir di '
+                            'perangkat.',
+                            style: TextStyle(fontSize: 13),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _isSaving ? null : _load,
+                          child: const Text('Coba lagi'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               const Text(
                 'Teks Penutup Struk',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -169,7 +227,9 @@ class _ReceiptSettingsPageState extends State<ReceiptSettingsPage> {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: _isSaving ? null : _save,
+                  // Simpan hanya boleh saat teks terbaru sudah terbaca dari
+                  // server — mencegah teks bawaan menimpa teks asli.
+                  onPressed: _isSaving || !_loadedFromServer ? null : _save,
                   child: _isSaving
                       ? const SizedBox(
                           width: 18,
