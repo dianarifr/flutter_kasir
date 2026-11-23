@@ -17,21 +17,12 @@
 #   ./scripts/run-android.sh --release             # argumen lain diteruskan
 #   ./scripts/run-android.sh --stop-daemon         # matikan Gradle daemon (hemat RAM)
 set -euo pipefail
-cd "$(dirname "$0")/.."
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR/.."
+. "$SCRIPT_DIR/lib/android-env.sh"
 
-if ! command -v java >/dev/null 2>&1; then
-  export JAVA_HOME="$HOME/tools/jdk-21"
-  export PATH="$JAVA_HOME/bin:$PATH"
-fi
-export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
-export ANDROID_SDK_ROOT="$ANDROID_HOME"
-# adb ada di SDK, bukan di PATH sistem.
-export PATH="$ANDROID_HOME/platform-tools:$PATH"
-
-if ! command -v adb >/dev/null 2>&1; then
-  echo "!! adb tidak ditemukan. Cek ANDROID_HOME (sekarang: $ANDROID_HOME)" >&2
-  exit 1
-fi
+android_env_init
+android_require_adb
 
 # --device <id> di-strip sendiri, sisanya diteruskan ke flutter run.
 DEVICE_ID=""
@@ -62,41 +53,7 @@ if [ "$STOP_DAEMON" = "1" ]; then
   exit 0
 fi
 
-adb start-server >/dev/null 2>&1 || true
-
-# Daftar device yang benar-benar siap dipakai (bukan offline/unauthorized).
-mapfile -t READY < <(adb devices | awk 'NR>1 && $2 == "device" { print $1 }')
-mapfile -t PENDING < <(adb devices | awk 'NR>1 && $2 != "device" && NF > 1 { print $1 " (" $2 ")" }')
-
-if [ -z "$DEVICE_ID" ]; then
-  if [ "${#READY[@]}" -eq 0 ]; then
-    echo "!! Tidak ada device Android yang siap dipakai." >&2
-    if [ "${#PENDING[@]}" -gt 0 ]; then
-      echo "   Terdeteksi tapi belum siap:" >&2
-      printf '     - %s\n' "${PENDING[@]}" >&2
-      echo "   Kalau '(unauthorized)': cek HP, jawab \"Allow\" pada dialog USB debugging." >&2
-    fi
-    cat >&2 <<'EOF'
-
-   Checklist:
-     1. HP: Settings > About phone > ketuk "Build number" 7x
-     2. Settings > Developer options > aktifkan "USB debugging"
-     3. Colok kabel USB (kabel data, bukan charge-only) lalu pilih mode "File Transfer"
-     4. Ulangi dialog "Allow USB debugging" di HP
-     5. Cek dengan: adb devices -l
-EOF
-    exit 1
-  fi
-
-  if [ "${#READY[@]}" -gt 1 ]; then
-    echo "!! Ada lebih dari satu device Android:" >&2
-    printf '     - %s\n' "${READY[@]}" >&2
-    echo "   Pilih satu lewat: ./scripts/run-android.sh --device <id>" >&2
-    exit 1
-  fi
-
-  DEVICE_ID="${READY[0]}"
-fi
+DEVICE_ID="$(android_select_device "$DEVICE_ID")"
 
 echo "==> Device: ${DEVICE_ID}"
 
@@ -133,9 +90,15 @@ if [ -n "$MEM_AVAIL_KB" ] && [ "$MEM_AVAIL_KB" -lt 3145728 ]; then
   echo "     ./scripts/run-android.sh --stop-daemon" >&2
 fi
 
+# versionCode disamakan dengan build-apk.sh (jumlah commit git). Tanpa ini,
+# APK debug memakai +7 dari pubspec dan bisa ditolak adb
+# (INSTALL_FAILED_VERSION_DOWNGRADE) saat HP sudah terpasang APK release
+# hasil install-apk.sh yang versionCode-nya lebih tinggi.
+BUILD_NUMBER="$(git rev-list --count HEAD)"
+
 cat <<'EOF'
 ==> flutter run
     Build pertama 1-3 menit (kompilasi native JNI, sekali saja). Jangan tutup terminal.
     Setelah app terbuka: 'r' hot reload (~1 detik), 'R' hot restart, 'q' keluar.
 EOF
-flutter run -d "$DEVICE_ID" ${FLUTTER_ARGS[@]+"${FLUTTER_ARGS[@]}"}
+flutter run -d "$DEVICE_ID" --build-number="${BUILD_NUMBER}" ${FLUTTER_ARGS[@]+"${FLUTTER_ARGS[@]}"}

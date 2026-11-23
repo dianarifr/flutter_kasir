@@ -14,13 +14,11 @@
 #   ./scripts/build-apk.sh              # APK universal
 #   ./scripts/build-apk.sh --split-per-abi   # APK per arsitektur
 set -euo pipefail
-cd "$(dirname "$0")/.."
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR/.."
+. "$SCRIPT_DIR/lib/android-env.sh"
 
-if ! command -v java >/dev/null 2>&1; then
-  export JAVA_HOME="$HOME/tools/jdk-21"
-  export PATH="$JAVA_HOME/bin:$PATH"
-fi
-export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
+android_env_init
 
 BUILD_NUMBER="$(git rev-list --count HEAD)"
 echo "==> Build APK release — versionCode=${BUILD_NUMBER} (dari jumlah commit git)"
